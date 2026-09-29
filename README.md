@@ -48,6 +48,13 @@ To preview in a browser without Word, run `npm run preview` (or `py -m http.serv
 
 ## Using it
 
+The three buttons at the top switch modes. Each mode keeps its own data and settings, and a graph clicked in the document opens in the mode it was made in.
+- **CD melting**: ellipticity vs temperature, fitted with the Tm model.
+- **CD spectrum**: ellipticity vs wavelength, drawn as lines with a zero line and no fit. The Results tab gives λmax, λmin, the crossover and Rpn = θmax/|θmin|.
+- **UV melting**: absorbance vs temperature, fitted with the same Tm model.
+
+Fitting can be switched on or off in any mode (**Model → Fit a model to the data**).
+
 1. **Data tab.** Paste columns from Excel: X in the first column, then one Y column per sample. A header row supplies the sample names.
    Decimal commas work. You can also select a table in Word and click **Import table from document**.
    Use *Multiply Y by* (e.g. 0.001) to convert to 10³ deg cm² dmol⁻¹, and *Exclude X outside* to leave points out of the fit (they still show, faded).
