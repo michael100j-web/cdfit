@@ -51,7 +51,7 @@ To preview in a browser without Word, run `npm run preview` (or `py -m http.serv
 The three buttons at the top switch modes. Each mode keeps its own data and settings, and a graph clicked in the document opens in the mode it was made in.
 - **CD melting**: ellipticity vs temperature, fitted with the Tm model.
 - **CD spectrum**: ellipticity vs wavelength, drawn as lines with a zero line and no fit. The Results tab gives λmax, λmin, the crossover and Rpn = θmax/|θmin|.
-- **UV melting**: absorbance vs temperature, fitted with the same Tm model.
+- **UV melting**: absorbance vs temperature, fitted with the same Tm model. By default the absorbance is constrained to rise on unfolding (see *Transition direction* below).
 
 Fitting can be switched on or off in any mode (**Model → Fit a model to the data**).
 
@@ -74,3 +74,10 @@ Fitting can be switched on or off in any mode (**Model → Fit a model to the da
   K and P. To use a different concentration, or to fit H, edit those lines. For example, delete the `H=` line and H becomes a fitted parameter.
 - Automatic starting values: the native and unfolded baselines are fitted as lines against temperature in K over the first and last 20% of the points,
   and Tm is taken where the estimated folded fraction crosses 0.5.
+- **Transition direction** (Model tab): holds the step at the midpoint, CDU − CDN evaluated at X = Tm, to one sign, and keeps Tm inside the fitted
+  temperature range. Choose it when the baselines drift as much as the transition itself, so an unconstrained fit could settle on a feature of the
+  drift, such as a falling step in UV data. The ordinary fit runs first. If its step has the wrong sign, or its Tm lies outside the data,
+  Tm is scanned across the data, the other parameters are refitted at each Tm,
+  and the best allowed fit is refined. The Results tab shows the step and, when the constraint changed the answer, the unconstrained Tm it replaced.
+  It works with any equation that defines Tm, CDN and CDU. New UV melting sessions default to *rises on unfolding*, CD melting to *either direction*.
+  Graphs saved before version 1.4 reopen with *either direction*, so their fits do not change.

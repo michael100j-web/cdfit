@@ -136,6 +136,13 @@
   <h3>Parameters</h3>
   <div class="hint">Leave the value blank for an automatic initial estimate. Tick <b>Fix</b> to hold a parameter constant at that value.</div>
   <table class="t" id="paramTable"></table>
+  <h3>Transition direction</h3>
+  <select id="stepDir">
+    <option value="any">Either direction</option>
+    <option value="up">Signal rises on unfolding (e.g. UV hyperchromicity)</option>
+    <option value="down">Signal falls on unfolding (e.g. CD at 225 nm)</option>
+  </select>
+  <div class="hint" id="stepHint" style="margin-top:4px"></div>
   <details>
     <summary>Equation syntax</summary>
     <div class="hint" style="margin-top:6px">
@@ -276,12 +283,13 @@ const MODES = {
   spec: { label: "CD spectrum", fit: false,
           fmt: { xTitle: "*λ* (nm)", yTitle: "[*θ*] (10^{3} deg cm^{2} dmol^{-1})", showPoints: false, connect: true, zeroLine: true, legendTm: false, xMinor: 1 },
           hint: "Paste from the spectrometer: first column wavelength (nm), then one ellipticity column per spectrum, e.g. one per temperature." },
-  uv:   { label: "UV melting", fit: true, fmt: { yTitle: "*A*_{215}", legend: "br" },
-          hint: "Paste from Excel: first column temperature, then one absorbance column per sample. The same Tm model is fitted." }
+  uv:   { label: "UV melting", fit: true, stepDir: "up", fmt: { yTitle: "*A*_{215}", legend: "br" },
+          hint: "Paste from Excel: first column temperature, then one absorbance column per sample. The same Tm model is fitted, with absorbance rising on unfolding (Model tab)." }
 };
 function modeFmt(mode) { return { ...DEFAULT_FMT, ...(MODES[mode] || MODES.melt).fmt }; }
 function baseState(mode) {
-  return { mode, dataText: "", yMult: 1, xFrom: "", xTo: "", series: [], preset: "cmp", eqText: PRESETS.cmp.text, params: {}, fit: MODES[mode].fit, fmt: modeFmt(mode) };
+  return { mode, dataText: "", yMult: 1, xFrom: "", xTo: "", series: [], preset: "cmp", eqText: PRESETS.cmp.text, params: {}, fit: MODES[mode].fit,
+           stepDir: MODES[mode].stepDir || "any", fmt: modeFmt(mode) };
 }
 function modeDefaults(mode) { return { ...baseState(mode), dataText: exampleData(mode) }; }
 let MODE_STORE = {};
@@ -467,7 +475,10 @@ function compileModel(text) {
   if (!params.length) throw new Error("The equation has no parameters to fit.");
   const src = `"use strict";return function(x,p){${body.join("")}return v_y;};`;
   const fn = new Function("$pow", src)($pow);
-  return { params, keys: params.map(p => p.toLowerCase()), fn };
+  // vars(x, p) returns every defined quantity, e.g. the baselines CDN and CDU
+  const vsrc = `"use strict";return function(x,p){${body.join("")}return {${[...defined].map(k => `${k}:v_${k}`).join(",")}};};`;
+  const vars = new Function("$pow", vsrc)($pow);
+  return { params, keys: params.map(p => p.toLowerCase()), fn, vars, defs: defined };
 }
 
 /* ============================ Initial estimates ============================ */
@@ -609,6 +620,53 @@ function lmFit(fn, xs, ys, p0, fixed) {
   };
 }
 
+/* ============================ Transition direction ============================ */
+// The step is the unfolded minus the native baseline at the midpoint: CDU − CDN evaluated at X = Tm.
+function stepSupported(model) { return !!model && model.keys.includes("tm") && model.defs.has("cdu") && model.defs.has("cdn"); }
+function stepAt(p) { const v = MODEL.vars(p[MODEL.keys.indexOf("tm")], p); return v.cdu - v.cdn; }
+function stepOk(p, dir) { const s = stepAt(p); return dir === "up" ? s >= 0 : s <= 0; }
+// Fit with the step held to one sign, and Tm inside the data (outside it one baseline is unsupported and the step
+// means nothing). Tm is scanned across the data with the other parameters refitted at each Tm; the best allowed
+// point is refined, and the best point overall gives the unconstrained fit to compare against. The scan also
+// supplies good starting values, which drifting data often lack.
+function directedFit(xs, ys, p0, fixed, dir) {
+  const fn = MODEL.fn, iTm = MODEL.keys.indexOf("tm"), word = dir === "up" ? "rising" : "falling";
+  const lo = Math.min(...xs), hi = Math.max(...xs), inside = (p) => p[iTm] >= lo && p[iTm] <= hi;
+  const allowed = (p) => inside(p) && isFinite(stepAt(p)) && stepOk(p, dir);
+  if (fixed[iTm]) {
+    const r = lmFit(fn, xs, ys, p0, fixed);
+    if (allowed(r.p)) return r;
+    throw new Error(`With Tm fixed, the fit does not give a ${word} step inside the data. Free Tm or change the transition direction.`);
+  }
+  const N = 24, fixTm = fixed.slice();
+  fixTm[iTm] = true;
+  let best = null, bestAny = null;
+  const tryTm = (tm) => {
+    const p = p0.slice(); p[iTm] = tm;
+    try {
+      const r = lmFit(fn, xs, ys, p, fixTm);
+      if (!bestAny || r.ssr < bestAny.ssr) bestAny = r;
+      if (stepOk(r.p, dir) && (!best || r.ssr < best.ssr)) best = r;
+    } catch (e) {}
+  };
+  for (let k = 0; k <= N; k++) tryTm(lo + (hi - lo) * k / N);
+  let plain = null;
+  try { plain = lmFit(fn, xs, ys, bestAny ? bestAny.p : p0, fixed); } catch (e) {}
+  if (!best) throw new Error(`No fit gives a ${word} step at the transition.`);
+  let out = null;
+  try { const r = lmFit(fn, xs, ys, best.p, fixed); if (allowed(r.p)) out = r; } catch (e) {}
+  if (plain && allowed(plain.p) && (!out || plain.ssr <= out.ssr)) return plain;
+  if (!out) {   // the best allowed fit sits against the constraint: settle Tm by a fine scan, without a standard error
+    const t0 = best.p[iTm], h = (hi - lo) / N;
+    for (let k = -10; k <= 10; k++) { const tm = t0 + h * k / 10; if (tm >= lo && tm <= hi) tryTm(tm); }
+    out = { ...best, fixed: fixed.slice(), limit: true };
+    out.se = best.se.slice(); out.se[iTm] = NaN;
+    out.ci = best.ci.slice(); out.ci[iTm] = [NaN, NaN];
+  }
+  if (plain && !allowed(plain.p)) out.avoided = { tm: plain.p[iTm], syx: plain.syx, outside: !inside(plain.p) };
+  return out;
+}
+
 /* ============================ Fitting orchestration ============================ */
 function runFits() {
   FITS = [];
@@ -625,7 +683,10 @@ function runFits() {
         if (cfg.fixed && !isFinite(v)) throw new Error(`${name} is fixed but has no value.`);
         p0.push(isFinite(v) ? v : auto); fixed.push(!!cfg.fixed);
       });
-      FITS[j] = lmFit(MODEL.fn, s.xs, s.ys, p0, fixed);
+      const dir = stepSupported(MODEL) && (S.stepDir === "up" || S.stepDir === "down") ? S.stepDir : null;
+      const fit = dir ? directedFit(s.xs, s.ys, p0, fixed, dir) : lmFit(MODEL.fn, s.xs, s.ys, p0, fixed);
+      if (stepSupported(MODEL)) { fit.step = stepAt(fit.p); fit.dir = dir; }
+      FITS[j] = fit;
     } catch (e) { FITS[j] = { error: e.message }; }
   });
 }
@@ -1022,7 +1083,11 @@ function renderResults() {
       h += `<tr><td>${esc(name)}</td><td class="num">${fmtNum(fit.p[i], 5)}</td>`;
       h += fit.fixed[i] ? `<td class="num" colspan="2">fixed</td></tr>` : `<td class="num">${fmtNum(fit.se[i], 3)}</td><td class="num">${fmtNum(fit.ci[i][0])} to ${fmtNum(fit.ci[i][1])}</td></tr>`;
     });
-    h += `</table><div class="hint" style="margin-top:4px">R² = ${fit.r2.toFixed(5)} · S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} · N = ${fit.n} · df = ${fit.df} · ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " · <b>ambiguous</b> (parameters not identifiable)" : ""}</div></div>`;
+    h += `</table><div class="hint" style="margin-top:4px">R² = ${fit.r2.toFixed(5)} · S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} · N = ${fit.n} · df = ${fit.df} · ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " · <b>ambiguous</b> (parameters not identifiable)" : ""}</div>`;
+    if (isFinite(fit.step)) h += `<div class="hint">Step at <i>T</i><sub>m</sub> (unfolded − native baseline) = ${fmtNum(fit.step, 3)}${fit.dir ? ` · constrained to ${fit.dir === "up" ? "rise" : "fall"} on unfolding` : ""}</div>`;
+    if (fit.avoided) h += `<div class="hint">Without the constraint the fit ${fit.avoided.outside ? "puts <i>T</i><sub>m</sub> outside the data" : `has a ${fit.dir === "up" ? "falling" : "rising"} step`} (<i>T</i><sub>m</sub> = ${fmtNum(fit.avoided.tm, 4)} °C, S<sub>y.x</sub> = ${fmtNum(fit.avoided.syx, 3)}). This fit was found by scanning <i>T</i><sub>m</sub> across the data.</div>`;
+    if (fit.limit) h += `<div class="msg err">The best allowed fit lies on the constraint, not at a minimum, so <i>T</i><sub>m</sub> has no standard error. The data may not show a transition in this direction.</div>`;
+    h += `</div>`;
   });
   el.innerHTML = h || "No visible data sets.";
 }
@@ -1043,7 +1108,9 @@ function resultsMatrix() {
     rows.push([label, ...cols.map(s => { const f = FITS[s.idx]; return f.fixed[i] ? fmtNum(f.p[i]) + " (fixed)" : fmtPM(f.p[i], f.se[i]); })]);
   });
   const tmI = MODEL.keys.indexOf("tm");
-  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "—"; })]);
+  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c && isFinite(c[0]) ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "—"; })]);
+  if (cols.some(s => isFinite(FITS[s.idx].step)))
+    rows.push(["Step at Tm (unfolded − native)", ...cols.map(s => { const f = FITS[s.idx]; return fmtNum(f.step, 3) + (f.dir ? (f.dir === "up" ? " (constrained ≥ 0)" : " (constrained ≤ 0)") : ""); })]);
   rows.push(["R²", ...cols.map(s => FITS[s.idx].r2.toFixed(4))]);
   rows.push(["Sy.x", ...cols.map(s => fmtNum(FITS[s.idx].syx, 3))]);
   rows.push(["N", ...cols.map(s => String(FITS[s.idx].n))]);
@@ -1058,6 +1125,11 @@ function refresh(refit) {
     else try { MODEL = compileModel(S.eqText); $("eqMsg").className = "msg"; $("eqMsg").textContent = "Parameters: " + MODEL.params.join(", "); }
     catch (e) { MODEL = null; $("eqMsg").className = "msg err"; $("eqMsg").textContent = e.message; }
     $("modelBox").style.opacity = S.fit ? "" : "0.45";
+    const canStep = stepSupported(MODEL);
+    $("stepDir").disabled = !canStep;
+    $("stepHint").innerHTML = canStep
+      ? "Holds the step between the unfolded and native baselines at <i>T</i><sub>m</sub> (CDU − CDN) to one sign, and keeps <i>T</i><sub>m</sub> inside the data. Use it when baseline drift is as large as the transition, so the fit could otherwise settle on the wrong feature."
+      : "Needs an equation that defines Tm, CDN and CDU, like the melting presets.";
     runFits();
     renderSeriesList();
     renderStyleList();
@@ -1123,7 +1195,7 @@ const FMT_FIELDS = ["xTitle", "yTitle", "xScale", "yScale", "xMin", "xMax", "xSt
 const FMT_CHECKS = ["showPoints", "showCurve", "connect", "zeroLine", "curveAxis", "legendTm", "tmLine", "hollow"];
 function loadForm() {
   $("data").value = S.dataText; $("yMult").value = S.yMult; $("xFrom").value = S.xFrom; $("xTo").value = S.xTo;
-  $("eq").value = S.eqText; $("fitOn").checked = !!S.fit;
+  $("eq").value = S.eqText; $("fitOn").checked = !!S.fit; $("stepDir").value = S.stepDir || "any";
   document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("active", b.dataset.mode === S.mode));
   $("dataHint").textContent = (MODES[S.mode] || MODES.melt).hint;
   document.body.classList.toggle("nofit", !S.fit);
@@ -1146,6 +1218,7 @@ function switchMode(mode) {
 // A graph from the document opens in its own mode; the work in the current mode is kept.
 function loadGraphState(obj) {
   const mode = MODES[obj.mode] ? obj.mode : "melt";
+  if (obj.stepDir === undefined) obj = { ...obj, stepDir: "any" };   // graphs made before 1.4 keep their unconstrained fit
   if (mode !== S.mode) MODE_STORE[S.mode] = clone(S);
   applyState(obj);
 }
@@ -1160,6 +1233,7 @@ function initUI() {
   };
   document.querySelectorAll("#modes button").forEach(b => b.onclick = () => switchMode(b.dataset.mode));
   $("fitOn").onchange = () => { S.fit = $("fitOn").checked; document.body.classList.toggle("nofit", !S.fit); refresh(true); };
+  $("stepDir").onchange = () => { S.stepDir = $("stepDir").value; refresh(true); };
   $("data").oninput = () => { S.dataText = $("data").value; refreshSoon(true); };
   ["yMult", "xFrom", "xTo"].forEach(k => $(k).oninput = () => { S[k] = $(k).value; refreshSoon(true); });
   FMT_FIELDS.forEach(k => $(k).oninput = () => { S.fmt[k] = $(k).value; refreshSoon(false); });
@@ -1363,7 +1437,7 @@ async function importTable() {
 
 /* ============================ Self-update ============================ */
 // GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.4.0";
 (function checkForUpdate() {
   if (location.protocol !== "https:") return;
   fetch("version.json?t=" + Date.now(), { cache: "no-store" })
