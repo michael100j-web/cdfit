@@ -15,7 +15,6 @@
   <IconUrl DefaultValue="https://michael100j-web.github.io/cdfit/src/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://michael100j-web.github.io/cdfit/src/assets/icon-64.png"/>
   <SupportUrl DefaultValue="https://michael100j-web.github.io/cdfit/src/taskpane.html"/>
-  <AppDomains/>
   <Hosts>
     <Host Name="Document"/>
   </Hosts>
