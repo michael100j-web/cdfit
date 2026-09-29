@@ -29,6 +29,12 @@
   #status { padding: 4px 12px; font-size: 12px; color: var(--muted); min-height: 22px; }
   #status.err { color: var(--err); }
   #status.ok { color: var(--ok); }
+  #linked { display: none; align-items: center; gap: 8px; padding: 6px 12px; background: var(--accent-soft); border-bottom: 1px solid var(--border); font-size: 12px; }
+  #linked.show { display: flex; }
+  #linked b { color: var(--accent); }
+  #linked button { margin-left: auto; }
+  #preview .pt { cursor: pointer; }
+  #preview .pt:hover > * { stroke: #000; stroke-width: 1.5; }
   nav.tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 6px; position: sticky; top: 0; background: var(--bg); z-index: 2; }
   nav.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 10px; }
   nav.tabs button.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
@@ -78,6 +84,7 @@
   <button class="browser-only" id="btnPng">Download PNG</button>
   <button class="browser-only" id="btnSvg">Download SVG</button>
 </div>
+<div id="linked"><span>📈 Showing the data saved in the <b>selected graph</b>. Edit anything, then save it back into the graph.</span><button class="small primary" id="btnLinkedSave">Save to graph</button></div>
 <div id="status"></div>
 
 <nav class="tabs" role="tablist">
@@ -661,7 +668,11 @@ function autoAxis(lo, hi, userMin, userMax, userStep) {
   if (!isFinite(uMin) && mn !== 0 && lo - mn < 0.04 * (mx - mn)) mn -= step;
   return { min: mn, max: mx, step };
 }
-function markerPath(shape, x, y, r, color, hollow, sw) {
+function markerPath(shape, x, y, r, color, hollow, sw, tip) {
+  const m = markerShape(shape, x, y, r, color, hollow, sw);
+  return tip ? `<g class="pt"><title>${esc(tip)}</title>${m}</g>` : m;
+}
+function markerShape(shape, x, y, r, color, hollow, sw) {
   const fill = hollow ? "#fff" : color, st = `fill="${fill}" stroke="${color}" stroke-width="${hollow ? sw : 0.5}"`;
   const f = (v) => v.toFixed(2);
   switch (shape) {
@@ -672,7 +683,7 @@ function markerPath(shape, x, y, r, color, hollow, sw) {
     default: return `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" ${st}/>`;
   }
 }
-function renderSVG() {
+function renderSVG(opts = {}) {
   const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
   const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55, aw = +F.axisW || 1.25;
   const vis = DATA ? DATA.series.filter(s => S.series[s.idx].visible) : [];
@@ -728,7 +739,13 @@ function renderSVG() {
       let g = `<g${faded ? ' opacity="0.3"' : ""}>`;
       for (let i = 0; i < xs.length; i++) {
         if (xs[i] < xa.min || xs[i] > xa.max || ys[i] < ya.min || ys[i] > ya.max) continue;
-        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, F.hollow, Math.max(1, r / 4));
+        let tip = null;
+        if (opts.interactive) {
+          const fit = FITS[ser.idx], yf = fit && !fit.error && MODEL ? MODEL.fn(xs[i], fit.p) : NaN;
+          tip = `${ser.name}${faded ? " (excluded from fit)" : ""}\nX = ${fmtNum(xs[i], 6)}\nY = ${fmtNum(ys[i], 6)}` +
+                (isFinite(yf) ? `\nFit = ${fmtNum(yf, 5)}\nResidual = ${fmtNum(ys[i] - yf, 3)}` : "");
+        }
+        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, F.hollow, Math.max(1, r / 4), tip);
       }
       return g + "</g>";
     };
@@ -876,7 +893,7 @@ function refresh(refit) {
     renderParamTable();
     renderResults();
   }
-  $("preview").innerHTML = renderSVG().svg;
+  $("preview").innerHTML = renderSVG({ interactive: true }).svg;
   const errs = FITS.filter(f => f && f.error).length, ok = FITS.filter(f => f && !f.error);
   if (!DATA || !DATA.series.length) setStatus("Paste data in the Data tab, or load the example.");
   else if (!MODEL) setStatus("Equation error — see the Model tab.", "err");
@@ -967,7 +984,8 @@ function initUI() {
   $("btnInsert").onclick = () => wordAction(() => insertGraph(false), "Graph inserted.");
   $("btnReplace").onclick = () => wordAction(() => insertGraph(true), "Graph updated.");
   $("btnLoad").onclick = () => wordAction(loadFromSelectedGraph, "Graph loaded — edit and click “Update selected graph”.");
-  $("btnTable").onclick = () => wordAction(insertResultsTable, "Results table inserted.");
+  $("btnLinkedSave").onclick = () => wordAction(() => insertGraph(true), "Saved into the graph.");
+  $("btnTable").onclick =() => wordAction(insertResultsTable, "Results table inserted.");
   $("btnImport").onclick = () => wordAction(importTable, "Data imported from the document.");
 }
 function download(url, name) { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
@@ -997,36 +1015,101 @@ async function insertGraph(replace) {
   const url = await svgToPngDataUrl(svg, width, height, (cm / 2.54 * dpi) / width);
   const b64 = url.slice(url.indexOf(",") + 1);
   const state = JSON.stringify(S);
+  const id = Math.random().toString(36).slice(2, 10);
+  await saveBackup(id, state);
   await Word.run(async (ctx) => {
     const sel = ctx.document.getSelection();
     let pic;
     if (replace) {
       const old = sel.inlinePictures.getFirstOrNullObject();
+      old.load("altTextTitle");
       await ctx.sync();
       if (old.isNullObject) throw new Error("Click a graph picture in the document first.");
+      const t = old.altTextTitle || "", m = t.indexOf(GRAPH_TITLE);
+      if (m >= 0) { try { Office.context.document.settings.remove("cdfit:" + t.slice(m + GRAPH_TITLE.length).trim()); } catch (e) {} }
       pic = old.insertInlinePictureFromBase64(b64, "Replace");
     } else {
       pic = sel.insertInlinePictureFromBase64(b64, "End");
     }
     pic.lockAspectRatio = true;
     pic.width = cm / 2.54 * 72;
-    pic.altTextTitle = "CD Fit graph";
+    pic.altTextTitle = GRAPH_TITLE + id;
     pic.altTextDescription = summaryText() + "\n\n" + TAG + state;
     await ctx.sync();
   });
+  if (replace) { try { Office.context.document.settings.saveAsync(() => {}); } catch (e) {} }
+  linkedJson = state;
+  if (replace) setLinked(true);
 }
-async function loadFromSelectedGraph() {
-  let desc = "";
+
+/* Graph data lives in the picture itself (alt text), with a backup copy in the
+   document's add-in settings keyed by the graph id, in case Word trims long alt text. */
+const GRAPH_TITLE = "CD Fit graph #";
+function saveBackup(id, state) {
+  return new Promise((res) => {
+    try {
+      Office.context.document.settings.set("cdfit:" + id, state);
+      Office.context.document.settings.saveAsync(() => res());
+    } catch (e) { res(); }
+  });
+}
+// Returns the saved JSON of the selected CD Fit graph, "" for a non-CD Fit picture, or null if no picture is selected.
+async function readSelectedGraph() {
+  let title = "", desc = "", found = false;
   await Word.run(async (ctx) => {
     const pic = ctx.document.getSelection().inlinePictures.getFirstOrNullObject();
-    pic.load("altTextDescription");
+    pic.load("altTextTitle,altTextDescription");
     await ctx.sync();
-    if (pic.isNullObject) throw new Error("Click a graph picture in the document first.");
-    desc = pic.altTextDescription || "";
+    if (pic.isNullObject) return;
+    found = true; title = pic.altTextTitle || ""; desc = pic.altTextDescription || "";
   });
+  if (!found) return null;
   const k = desc.indexOf(TAG);
-  if (k < 0) throw new Error("This picture was not made by CD Fit (no saved data in its alt text).");
-  applyState(JSON.parse(desc.slice(k + TAG.length)));
+  if (k >= 0) { const json = desc.slice(k + TAG.length); try { JSON.parse(json); return json; } catch (e) {} }
+  const m = title.indexOf(GRAPH_TITLE);
+  if (m >= 0) { try { const v = Office.context.document.settings.get("cdfit:" + title.slice(m + GRAPH_TITLE.length).trim()); if (v) return v; } catch (e) {} }
+  return "";
+}
+async function loadFromSelectedGraph() {
+  const json = await readSelectedGraph();
+  if (json === null) throw new Error("Click a graph picture in the document first.");
+  if (!json) throw new Error("This picture was not made by CD Fit (no saved data).");
+  linkedJson = json;
+  applyState(JSON.parse(json));
+  setLinked(true);
+}
+
+/* Clicking a CD Fit graph in the document shows its data here automatically. */
+let linkedJson = null, selTimer = null, selBusy = false;
+function setLinked(on) { $("linked").classList.toggle("show", !!on); }
+function showTab(name) {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + name));
+}
+function onSelectionChanged() {
+  clearTimeout(selTimer);
+  selTimer = setTimeout(async () => {
+    if (selBusy) return;
+    selBusy = true;
+    try {
+      const json = await readSelectedGraph();
+      if (!json) { setLinked(false); return; }
+      if (json !== linkedJson) {
+        linkedJson = json;
+        applyState(JSON.parse(json));
+        showTab("data");
+        setStatus("Loaded the data saved in the selected graph.", "ok");
+      }
+      setLinked(true);
+    } catch (e) { console.warn(e); }
+    finally { selBusy = false; }
+  }, 200);
+}
+let selWatching = false;
+function watchSelection() {
+  if (selWatching) return;
+  selWatching = true;
+  Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged);
 }
 async function insertResultsTable() {
   if (!MODEL || !DATA) throw new Error("Nothing to report yet.");
@@ -1056,7 +1139,10 @@ async function importTable() {
 }
 
 /* ============================ Start ============================ */
-function markWord() { document.body.classList.add("in-word"); $("hostLabel").textContent = "Word"; }
+function markWord() {
+  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word";
+  try { watchSelection(); onSelectionChanged(); } catch (e) { console.warn(e); }
+}
 function start(inWord) {
   if (inWord) markWord();
   initUI();
