@@ -1,0 +1,1080 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CD Fit</title>
+<script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+<style>
+  :root {
+    --accent: #2b579a; --accent-soft: #e8eef7; --bg: #ffffff; --fg: #1f1f1f; --muted: #616161;
+    --border: #d4d4d4; --panel: #f5f6f8; --err: #b3261e; --ok: #1a7f37;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  body { font: 13px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif; }
+  header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--accent); color: #fff; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .host { margin-left: auto; font-size: 11px; opacity: .85; }
+  #preview { padding: 8px 10px 4px; background: #fff; border-bottom: 1px solid var(--border); }
+  #preview svg { width: 100%; height: auto; display: block; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  button { font: inherit; padding: 5px 10px; border: 1px solid var(--border); background: #fff; color: var(--fg); border-radius: 3px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.small { padding: 2px 7px; font-size: 12px; }
+  .word-only { display: none; }
+  body.in-word .word-only { display: inline-block; }
+  body.in-word .browser-only { display: none; }
+  #status { padding: 4px 12px; font-size: 12px; color: var(--muted); min-height: 22px; }
+  #status.err { color: var(--err); }
+  #status.ok { color: var(--ok); }
+  nav.tabs { display: flex; border-bottom: 1px solid var(--border); padding: 0 6px; position: sticky; top: 0; background: var(--bg); z-index: 2; }
+  nav.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 10px; }
+  nav.tabs button.active { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+  section.tab { display: none; padding: 10px 12px 24px; }
+  section.tab.active { display: block; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  h3:first-child { margin-top: 2px; }
+  textarea { width: 100%; font: 12px/1.35 Consolas, "Cascadia Mono", monospace; border: 1px solid var(--border); border-radius: 3px; padding: 6px; resize: vertical; color: var(--fg); background: #fff; }
+  input[type=number], input[type=text], select { font: inherit; padding: 3px 5px; border: 1px solid var(--border); border-radius: 3px; width: 100%; min-width: 0; background: #fff; color: var(--fg); }
+  input[type=color] { width: 28px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 3px; background: #fff; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px 6px; align-items: end; }
+  label.f { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); gap: 2px; }
+  label.c { display: flex; align-items: center; gap: 6px; }
+  .hint { font-size: 11px; color: var(--muted); }
+  .msg { font-size: 12px; margin-top: 4px; }
+  .msg.err { color: var(--err); }
+  table.t { border-collapse: collapse; width: 100%; font-size: 12px; }
+  table.t th, table.t td { border-bottom: 1px solid #eaeaea; padding: 3px 4px; text-align: left; }
+  table.t td.num, table.t th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.t input[type=text] { padding: 2px 4px; }
+  .series-item { display: grid; grid-template-columns: auto auto 1fr auto; gap: 6px; align-items: center; padding: 3px 0; }
+  .card { border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin-bottom: 10px; }
+  .card h4 { margin: 0 0 4px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .big { font-size: 16px; font-weight: 600; margin: 2px 0 6px; }
+  details summary { cursor: pointer; color: var(--accent); margin-top: 10px; }
+  code { font-family: Consolas, monospace; font-size: 12px; background: var(--panel); padding: 0 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <svg width="18" height="18" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 3v26h26" fill="none" stroke="#fff" stroke-width="3"/><path d="M6 9c6 0 7 1 10 8s5 7 12 7" fill="none" stroke="#fff" stroke-width="2.5"/><circle cx="9" cy="9" r="2" fill="#fff"/><circle cx="16" cy="16" r="2" fill="#fff"/><circle cx="24" cy="23" r="2" fill="#fff"/></svg>
+  <h1>CD Fit</h1>
+  <span class="host" id="hostLabel">Browser mode</span>
+</header>
+
+<div id="preview"></div>
+
+<div class="actions">
+  <button class="primary" id="btnFit" title="Re-run the fit">Fit</button>
+  <button class="word-only primary" id="btnInsert" title="Insert the graph at the cursor">Insert graph</button>
+  <button class="word-only" id="btnReplace" title="Replace the selected graph picture with this one">Update selected graph</button>
+  <button class="word-only" id="btnLoad" title="Load data and settings from a graph picture inserted by CD Fit">Edit selected graph</button>
+  <button class="word-only" id="btnTable" title="Insert the fit results as a Word table">Insert results table</button>
+  <button class="browser-only" id="btnPng">Download PNG</button>
+  <button class="browser-only" id="btnSvg">Download SVG</button>
+</div>
+<div id="status"></div>
+
+<nav class="tabs" role="tablist">
+  <button data-tab="data" class="active">Data</button>
+  <button data-tab="model">Model</button>
+  <button data-tab="format">Graph</button>
+  <button data-tab="results">Results</button>
+</nav>
+
+<!-- DATA -->
+<section class="tab active" id="tab-data">
+  <h3>Data table</h3>
+  <div class="hint">Paste from Excel/Prism: first column X (temperature), then one Y column per sample. Optional header row gives the sample names. Decimal commas are fine.</div>
+  <textarea id="data" rows="11" spellcheck="false"></textarea>
+  <div class="row">
+    <button class="small" id="btnExample">Load example</button>
+    <button class="small word-only" id="btnImport" title="Select a table in the document first">Import table from document</button>
+    <button class="small" id="btnFile">Open file…</button>
+    <input type="file" id="file" accept=".csv,.txt,.tsv,.dat" hidden>
+    <button class="small" id="btnClear">Clear</button>
+  </div>
+  <div class="grid" style="margin-top:6px">
+    <label class="f">Multiply Y by<input type="number" id="yMult" step="any" value="1"></label>
+    <label class="f">Exclude X outside<span style="display:flex;gap:4px"><input type="number" id="xFrom" step="any" placeholder="min"><input type="number" id="xTo" step="any" placeholder="max"></span></label>
+  </div>
+  <h3>Data sets</h3>
+  <div id="seriesList" class="hint">No data yet.</div>
+</section>
+
+<!-- MODEL -->
+<section class="tab" id="tab-model">
+  <h3>Equation</h3>
+  <select id="preset"></select>
+  <textarea id="eq" rows="13" spellcheck="false" style="margin-top:6px"></textarea>
+  <div id="eqMsg" class="msg"></div>
+  <h3>Parameters</h3>
+  <div class="hint">Leave the value blank for an automatic initial estimate. Tick <b>Fix</b> to hold a parameter constant at that value.</div>
+  <table class="t" id="paramTable"></table>
+  <details>
+    <summary>Equation syntax</summary>
+    <div class="hint" style="margin-top:6px">
+      One definition per line, <code>NAME=expression</code>, as in Prism's user-defined equations. <code>X</code> is the independent variable and the last line must define <code>Y</code>.
+      Any name that is never defined becomes a fitted parameter. Names are case-insensitive. Lines starting with <code>;</code> are comments.<br>
+      Operators: <code>+ - * / ^</code> and parentheses. Functions: <code>EXP LN LOG SQRT ABS CBRT MIN MAX SIN COS TAN ATAN</code>.
+      Odd roots of negative numbers (e.g. <code>^(1/3)</code>) return the real root.
+    </div>
+  </details>
+</section>
+
+<!-- FORMAT -->
+<section class="tab" id="tab-format">
+  <h3>Axis titles</h3>
+  <label class="f">X axis<input type="text" id="xTitle"></label>
+  <label class="f" style="margin-top:4px">Y axis<input type="text" id="yTitle"></label>
+  <div class="hint">Markup: <code>*italic*</code>, <code>^{superscript}</code>, <code>_{subscript}</code>.</div>
+
+  <h3>X axis range</h3>
+  <div class="grid4">
+    <label class="f">Min<input type="number" id="xMin" step="any" placeholder="auto"></label>
+    <label class="f">Max<input type="number" id="xMax" step="any" placeholder="auto"></label>
+    <label class="f">Major tick<input type="number" id="xStep" step="any" placeholder="auto"></label>
+    <label class="f">Minor ticks<input type="number" id="xMinor" min="0" max="9" step="1"></label>
+  </div>
+  <h3>Y axis range</h3>
+  <div class="grid4">
+    <label class="f">Min<input type="number" id="yMin" step="any" placeholder="auto"></label>
+    <label class="f">Max<input type="number" id="yMax" step="any" placeholder="auto"></label>
+    <label class="f">Major tick<input type="number" id="yStep" step="any" placeholder="auto"></label>
+    <label class="f">Minor ticks<input type="number" id="yMinor" min="0" max="9" step="1"></label>
+  </div>
+
+  <h3>Appearance</h3>
+  <div class="grid">
+    <label class="f">Plot width (px)<input type="number" id="plotW" min="150" max="1500" step="10"></label>
+    <label class="f">Plot height (px)<input type="number" id="plotH" min="100" max="1500" step="10"></label>
+    <label class="f">Font size<input type="number" id="fontSize" min="6" max="40" step="1"></label>
+    <label class="f">Font<select id="fontFamily"><option>Arial</option><option>Helvetica</option><option>Calibri</option><option>Times New Roman</option><option>Segoe UI</option></select></label>
+    <label class="f">Symbol size<input type="number" id="markerSize" min="0" max="20" step="0.5"></label>
+    <label class="f">Curve width<input type="number" id="lineW" min="0" max="10" step="0.25"></label>
+    <label class="f">Axis width<input type="number" id="axisW" min="0.25" max="6" step="0.25"></label>
+    <label class="f">Legend<select id="legend"><option value="tr">Inside, top right</option><option value="tl">Inside, top left</option><option value="br">Inside, bottom right</option><option value="bl">Inside, bottom left</option><option value="off">Hidden</option></select></label>
+  </div>
+  <div style="margin-top:8px">
+    <label class="c"><input type="checkbox" id="showPoints"> Show data points</label>
+    <label class="c"><input type="checkbox" id="showCurve"> Show fitted curve</label>
+    <label class="c"><input type="checkbox" id="curveAxis"> Extend curve over whole X axis</label>
+    <label class="c"><input type="checkbox" id="legendTm"> Show <i>T</i><sub>m</sub> in legend</label>
+    <label class="c"><input type="checkbox" id="tmLine"> Mark <i>T</i><sub>m</sub> with dotted line</label>
+    <label class="c"><input type="checkbox" id="hollow"> Hollow symbols</label>
+  </div>
+
+  <h3>Export</h3>
+  <div class="grid">
+    <label class="f">Width in document (cm)<input type="number" id="exportCm" min="2" max="40" step="0.5"></label>
+    <label class="f">Format<select id="exportFmt"><option value="png300">PNG, 300 dpi</option><option value="png600">PNG, 600 dpi</option><option value="svg">SVG vector (not re-editable)</option></select></label>
+  </div>
+  <div class="row"><button class="small" id="btnResetFmt">Reset graph format</button></div>
+</section>
+
+<!-- RESULTS -->
+<section class="tab" id="tab-results">
+  <div id="results" class="hint">Fit results appear here.</div>
+  <div class="row"><button class="small" id="btnCopy">Copy results (tab-separated)</button></div>
+</section>
+
+<script>
+"use strict";
+
+/* ============================ Presets ============================ */
+const PRESETS = {
+  cmp: {
+    label: "Tm of CMPs (trimer ⇌ 3 monomers, ΔH fixed)",
+    text:
+`; Temp vs. Elipticity -- Tm of CMPs
+; X: Temperature (°C)   Y: Ellipticity
+R=8.31
+H=-500000
+K=EXP(H/(R*(X+273.15))*((X+273.15)/(Tm+273.15)-1)-ln(0.75*0.0002^2))
+P=1/(3*K*(0.0002^2))
+U=(-P/2+(P^2/4+P^3/27)^(1/2))^(1/3)
+V=-(P/2+(P^2/4+P^3/27)^(1/2))^(1/3)
+F= U+V+1
+CDU=REFU+DEU*(X+273.15)
+CDN=REFN+DEN*(X+273.15)
+Y=F*(CDN-CDU)+CDU`
+  },
+  twostate: {
+    label: "Two-state unfolding, monomolecular (ΔH fitted)",
+    text:
+`; Monomolecular two-state transition, sloping baselines
+; X: Temperature (°C)   Y: Ellipticity   H: folding enthalpy (J/mol, negative)
+R=8.314
+T=X+273.15
+K=EXP(-H/R*(1/T-1/(Tm+273.15)))
+F=K/(1+K)
+CDU=REFU+DEU*T
+CDN=REFN+DEN*T
+Y=F*(CDN-CDU)+CDU`
+  },
+  boltz: {
+    label: "Boltzmann sigmoid",
+    text:
+`; Boltzmann sigmoid (Y goes from Bottom at low X to Top at high X)
+Y=Bottom+(Top-Bottom)/(1+EXP((V50-X)/Slope))`
+  }
+};
+const COLORS = ["#0a0ac8", "#d11a1a", "#16923a", "#000000", "#e07b00", "#7b2cbf", "#008b8b", "#c2185b"];
+const SHAPES = ["circle", "square", "triangle", "diamond", "tridown"];
+const TAG = "#CDFIT-STATE ";
+
+const DEFAULT_FMT = {
+  xTitle: "*T* (°C)",
+  yTitle: "*θ*_{225} (10^{3} deg cm^{2} dmol^{-1})",
+  xMin: "", xMax: "", xStep: "", xMinor: 1,
+  yMin: "", yMax: "", yStep: "", yMinor: 1,
+  plotW: 430, plotH: 290, fontSize: 16, fontFamily: "Arial",
+  markerSize: 5, lineW: 2, axisW: 1.25, legend: "tr",
+  showPoints: true, showCurve: true, curveAxis: false, legendTm: true, tmLine: false, hollow: false,
+  exportCm: 12, exportFmt: "png300"
+};
+
+/* ============================ State ============================ */
+let S = {
+  dataText: "", yMult: 1, xFrom: "", xTo: "",
+  series: [],            // [{color, visible, name}] indexed by column
+  preset: "cmp", eqText: PRESETS.cmp.text,
+  params: {},            // lowercased name -> {value:"", fixed:false}
+  fmt: { ...DEFAULT_FMT }
+};
+let DATA = null;          // parsed data
+let MODEL = null;         // compiled model
+let FITS = [];            // fit results per series index
+
+const $ = (id) => document.getElementById(id);
+function store() { try { localStorage.setItem("cdfit.state.v1", JSON.stringify(S)); } catch (e) {} }
+function restoreStored() {
+  try { const t = localStorage.getItem("cdfit.state.v1"); if (t) return JSON.parse(t); } catch (e) {}
+  return null;
+}
+function setStatus(msg, kind) { const el = $("status"); el.textContent = msg || ""; el.className = kind || ""; }
+
+/* ============================ Data parsing ============================ */
+function parseNum(s) {
+  s = String(s).trim();
+  if (s === "") return NaN;
+  s = s.replace(/−/g, "-").replace(/\s/g, "");
+  if (!/^[-+]?(\d+[.,]?\d*|[.,]\d+)([eE][-+]?\d+)?$/.test(s)) return NaN;
+  return parseFloat(s.replace(",", "."));
+}
+function parseData(text) {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
+  if (!lines.length) return { names: [], rows: [] };
+  let splitter;
+  if (lines.some(l => l.includes("\t"))) splitter = l => l.split("\t");
+  else if (lines.some(l => l.includes(";"))) splitter = l => l.split(";");
+  else if (lines.some(l => /\d,\d/.test(l) && /\s/.test(l.trim()))) splitter = l => l.trim().split(/\s+/); // decimal commas, space separated
+  else splitter = l => l.trim().split(/[\s,]+/);
+  let cells = lines.map(splitter);
+  let names = null;
+  const first = cells[0];
+  if (first.slice(1).some(c => c.trim() !== "" && isNaN(parseNum(c))) || isNaN(parseNum(first[0]))) {
+    names = first.map(c => c.trim());
+    cells = cells.slice(1);
+  }
+  const ncol = Math.max(2, ...cells.map(r => r.length), names ? names.length : 0);
+  const rows = cells.map(r => { const o = []; for (let i = 0; i < ncol; i++) o.push(parseNum(r[i] ?? "")); return o; })
+                    .filter(r => isFinite(r[0]));
+  const nSeries = ncol - 1;
+  const outNames = [];
+  for (let j = 0; j < nSeries; j++) outNames.push((names && names[j + 1]) || (nSeries === 1 ? "Data" : "Data " + (j + 1)));
+  return { xName: names ? names[0] : "X", names: outNames, rows };
+}
+function buildData() {
+  const p = parseData(S.dataText);
+  const mult = isFinite(parseFloat(S.yMult)) ? parseFloat(S.yMult) : 1;
+  const lo = S.xFrom === "" ? -Infinity : parseFloat(S.xFrom), hi = S.xTo === "" ? Infinity : parseFloat(S.xTo);
+  const series = p.names.map((name, j) => {
+    const xs = [], ys = [], xsEx = [], ysEx = [];
+    for (const r of p.rows) {
+      const x = r[0], y = r[j + 1];
+      if (!isFinite(y)) continue;
+      if (x < lo || x > hi) { xsEx.push(x); ysEx.push(y * mult); } else { xs.push(x); ys.push(y * mult); }
+    }
+    return { name, xs, ys, xsEx, ysEx };
+  });
+  // keep per-series settings aligned with columns
+  series.forEach((s, j) => {
+    if (!S.series[j]) S.series[j] = { color: COLORS[j % COLORS.length], visible: true, name: "" };
+  });
+  S.series.length = series.length;
+  series.forEach((s, j) => { if (S.series[j].name) s.name = S.series[j].name; s.idx = j; });
+  DATA = { series, xName: p.xName };
+}
+
+/* ============================ Equation compiler ============================ */
+const FUNCS = {
+  exp: "Math.exp", ln: "Math.log", log: "Math.log10", log10: "Math.log10", sqrt: "Math.sqrt", abs: "Math.abs",
+  cbrt: "Math.cbrt", sin: "Math.sin", cos: "Math.cos", tan: "Math.tan", atan: "Math.atan", min: "Math.min", max: "Math.max", pow: "$pow"
+};
+const CONSTS = { pi: "Math.PI" };
+function $pow(a, b) {
+  if (a < 0 && !Number.isInteger(b)) {
+    const inv = 1 / b, r = Math.round(inv);
+    if (Math.abs(inv - r) < 1e-9 && Math.abs(r % 2) === 1) return -Math.pow(-a, b);
+  }
+  return Math.pow(a, b);
+}
+function tokenize(src, lineNo) {
+  const toks = []; let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    const m = /^(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/.exec(src.slice(i));
+    if (m) { toks.push({ t: "num", v: m[0] }); i += m[0].length; continue; }
+    const id = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
+    if (id) { toks.push({ t: "id", v: id[0] }); i += id[0].length; continue; }
+    if (src.startsWith("**", i)) { toks.push({ t: "op", v: "^" }); i += 2; continue; }
+    if ("+-*/^(),".includes(c)) { toks.push({ t: "op", v: c }); i++; continue; }
+    throw new Error(`Line ${lineNo}: unexpected character "${c}"`);
+  }
+  return toks;
+}
+function compileModel(text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const defs = [];
+  lines.forEach((raw, k) => {
+    const line = raw.trim();
+    if (!line || line.startsWith(";") || line.startsWith("//") || line.startsWith("#")) return;
+    const eqi = line.indexOf("=");
+    if (eqi < 0) throw new Error(`Line ${k + 1}: expected NAME=expression`);
+    const name = line.slice(0, eqi).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`Line ${k + 1}: "${name}" is not a valid name`);
+    if (name.toLowerCase() === "x") throw new Error(`Line ${k + 1}: X cannot be redefined`);
+    defs.push({ name, key: name.toLowerCase(), expr: line.slice(eqi + 1), line: k + 1 });
+  });
+  if (!defs.length) throw new Error("The equation is empty.");
+  if (defs[defs.length - 1].key !== "y") throw new Error("The last definition must be Y=…");
+  const assignedAll = new Set(defs.map(d => d.key));
+  const defined = new Set();
+  const params = [];          // display names
+  const paramIdx = {};        // key -> index
+  const body = [];
+  for (const d of defs) {
+    const toks = tokenize(d.expr, d.line);
+    let pos = 0;
+    const peek = () => toks[pos];
+    const eat = (v) => { const t = toks[pos]; if (!t || t.v !== v) throw new Error(`Line ${d.line}: expected "${v}"`); pos++; };
+    const parseExpr = () => {
+      let s = parseTerm();
+      while (peek() && (peek().v === "+" || peek().v === "-")) { const op = toks[pos++].v; s = `(${s}${op}${parseTerm()})`; }
+      return s;
+    };
+    const parseTerm = () => {
+      let s = parseUnary();
+      while (peek() && (peek().v === "*" || peek().v === "/")) { const op = toks[pos++].v; s = `(${s}${op}${parseUnary()})`; }
+      return s;
+    };
+    const parseUnary = () => {
+      if (peek() && peek().v === "-") { pos++; return `(-${parseUnary()})`; }
+      if (peek() && peek().v === "+") { pos++; return parseUnary(); }
+      return parsePower();
+    };
+    const parsePower = () => {
+      const base = parsePrimary();
+      if (peek() && peek().v === "^") { pos++; return `$pow(${base},${parseUnary()})`; }
+      return base;
+    };
+    const parsePrimary = () => {
+      const t = toks[pos++];
+      if (!t) throw new Error(`Line ${d.line}: expression ends unexpectedly`);
+      if (t.t === "num") return `(${t.v})`;
+      if (t.v === "(") { const s = parseExpr(); eat(")"); return `(${s})`; }
+      if (t.t === "id") {
+        const key = t.v.toLowerCase();
+        if (peek() && peek().v === "(") {
+          const fn = FUNCS[key];
+          if (!fn) throw new Error(`Line ${d.line}: unknown function ${t.v}()`);
+          pos++;
+          const args = [];
+          if (!(peek() && peek().v === ")")) { args.push(parseExpr()); while (peek() && peek().v === ",") { pos++; args.push(parseExpr()); } }
+          eat(")");
+          return `${fn}(${args.join(",")})`;
+        }
+        if (key === "x") return "x";
+        if (defined.has(key)) return `v_${key}`;
+        if (assignedAll.has(key)) throw new Error(`Line ${d.line}: ${t.v} is used before it is defined`);
+        if (CONSTS[key]) return CONSTS[key];
+        if (!(key in paramIdx)) { paramIdx[key] = params.length; params.push(t.v); }
+        return `p[${paramIdx[key]}]`;
+      }
+      throw new Error(`Line ${d.line}: unexpected "${t.v}"`);
+    };
+    const js = parseExpr();
+    if (pos < toks.length) throw new Error(`Line ${d.line}: unexpected "${toks[pos].v}"`);
+    body.push(`${defined.has(d.key) ? "" : "let "}v_${d.key}=${js};`);
+    defined.add(d.key);
+  }
+  if (!params.length) throw new Error("The equation has no parameters to fit.");
+  const src = `"use strict";return function(x,p){${body.join("")}return v_y;};`;
+  const fn = new Function("$pow", src)($pow);
+  return { params, keys: params.map(p => p.toLowerCase()), fn };
+}
+
+/* ============================ Initial estimates ============================ */
+function linfit(xs, ys) {
+  const n = xs.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; }
+  const den = n * sxx - sx * sx;
+  const b = Math.abs(den) < 1e-300 ? 0 : (n * sxy - sx * sy) / den;
+  return { a: (sy - b * sx) / n, b };
+}
+function estimates(xs, ys) {
+  const idx = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
+  const X = idx.map(i => xs[i]), Y = idx.map(i => ys[i]);
+  const n = X.length, k = Math.max(3, Math.min(n, Math.round(n * 0.2)));
+  const K = (x) => x + 273.15;
+  const low = linfit(X.slice(0, k).map(K), Y.slice(0, k));
+  const high = linfit(X.slice(n - k).map(K), Y.slice(n - k));
+  let tm = (X[0] + X[n - 1]) / 2;
+  for (let i = 1; i < n; i++) {
+    const f = (i) => { const yn = low.a + low.b * K(X[i]), yu = high.a + high.b * K(X[i]); return (Y[i] - yu) / (yn - yu); };
+    const f0 = f(i - 1), f1 = f(i);
+    if ((f0 - 0.5) * (f1 - 0.5) <= 0 && f0 !== f1) { tm = X[i - 1] + (0.5 - f0) / (f1 - f0) * (X[i] - X[i - 1]); break; }
+  }
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  return {
+    tm, refn: low.a, den: low.b, refu: high.a, deu: high.b, h: -300000,
+    bottom: mean(Y.slice(0, k)), top: mean(Y.slice(n - k)), v50: tm, slope: (X[n - 1] - X[0]) / 15
+  };
+}
+
+/* ============================ Levenberg–Marquardt ============================ */
+function solveScaled(A, g) {
+  const m = g.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
+  const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat([g[i] / D[i]]));
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (!(Math.abs(M[piv][c]) > 1e-14)) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c] / M[c][c]; if (f) for (let k = c; k <= m; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r[m] / r[i] / D[i]);
+}
+function invertScaled(A) {
+  const m = A.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
+  const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat(A.map((_, j) => (i === j ? 1 : 0))));
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (!(Math.abs(M[piv][c]) > 1e-15)) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    const d = M[c][c]; for (let k = 0; k < 2 * m; k++) M[c][k] /= d;
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c]; if (f) for (let k = 0; k < 2 * m; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r.slice(m).map((v, j) => v / (D[i] * D[j])));
+}
+function tCrit975(df) {
+  const tab = [NaN, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228];
+  if (df <= 10) return tab[df] ?? NaN;
+  const z = 1.959963985, z2 = z * z;
+  return z + (z2 * z + z) / (4 * df) + (5 * z2 * z2 * z + 16 * z2 * z + 3 * z) / (96 * df * df)
+    + (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / (384 * df ** 3);
+}
+function lmFit(fn, xs, ys, p0, fixed) {
+  const n = xs.length, free = [];
+  p0.forEach((_, i) => { if (!fixed[i]) free.push(i); });
+  const m = free.length;
+  if (n <= m) throw new Error(`Only ${n} points for ${m} free parameters.`);
+  const evalR = (p) => {
+    const r = new Float64Array(n); let s = 0;
+    for (let i = 0; i < n; i++) { const yi = fn(xs[i], p); if (!isFinite(yi)) return null; r[i] = ys[i] - yi; s += r[i] * r[i]; }
+    return { r, s };
+  };
+  const jac = (p, central) => {
+    const J = [];
+    for (const k of free) {
+      const h = (central ? 6e-6 : 1.5e-8) * Math.max(Math.abs(p[k]), 1e-3);
+      const pp = p.slice(); pp[k] += h;
+      const col = new Float64Array(n);
+      if (central) {
+        const pm = p.slice(); pm[k] -= h;
+        for (let i = 0; i < n; i++) col[i] = (fn(xs[i], pp) - fn(xs[i], pm)) / (2 * h);
+      } else {
+        for (let i = 0; i < n; i++) col[i] = (fn(xs[i], pp) - fn(xs[i], p)) / h;
+      }
+      if (!col.every(isFinite)) return null;
+      J.push(col);
+    }
+    return J;
+  };
+  const normal = (J, r) => {
+    const A = [], g = [];
+    for (let a = 0; a < m; a++) {
+      A.push(new Array(m)); let s = 0;
+      for (let i = 0; i < n; i++) s += J[a][i] * r[i];
+      g.push(s);
+      for (let b = 0; b <= a; b++) { let t = 0; for (let i = 0; i < n; i++) t += J[a][i] * J[b][i]; A[a][b] = t; }
+    }
+    for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) A[a][b] = A[b][a];
+    return { A, g };
+  };
+  let P = p0.slice(), cur = evalR(P);
+  if (!cur) throw new Error("The model gives non-numeric values at the initial parameter values.");
+  let lambda = 1e-3, iter = 0, converged = false;
+  for (; iter < 400 && m > 0; iter++) {
+    const J = jac(P, false);
+    if (!J) throw new Error("Could not compute derivatives (the model is not finite near the current values).");
+    const { A, g } = normal(J, cur.r);
+    let improved = false, small = false;
+    while (lambda < 1e16) {
+      const M = A.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + 1e-300 : v)));
+      const d = solveScaled(M, g);
+      if (d) {
+        const Pn = P.slice(); free.forEach((k, j) => { Pn[k] += d[j]; });
+        const nw = evalR(Pn);
+        if (nw && nw.s <= cur.s) {
+          const rel = (cur.s - nw.s) / (cur.s + 1e-300);
+          small = rel < 1e-13 || d.every((dj, j) => Math.abs(dj) <= 1e-11 * (Math.abs(P[free[j]]) + 1e-11));
+          P = Pn; cur = nw; lambda = Math.max(lambda / 10, 1e-12); improved = true;
+          break;
+        }
+      }
+      lambda *= 10;
+    }
+    if (!improved || small) { converged = true; break; }
+  }
+  const df = n - m, ssr = cur.s;
+  const se = P.map(() => NaN);
+  let cov = null;
+  if (m > 0) {
+    const J = jac(P, true);
+    if (J) { const { A } = normal(J, cur.r); cov = invertScaled(A); }
+    if (cov) free.forEach((k, j) => { se[k] = Math.sqrt(Math.max(0, cov[j][j]) * ssr / df); });
+  }
+  const ybar = ys.reduce((a, b) => a + b, 0) / n;
+  const sst = ys.reduce((a, y) => a + (y - ybar) ** 2, 0);
+  const t = tCrit975(df);
+  return {
+    p: P, se, fixed: fixed.slice(), ci: P.map((v, i) => (fixed[i] ? null : [v - t * se[i], v + t * se[i]])),
+    ssr, df, n, r2: sst > 0 ? 1 - ssr / sst : NaN, syx: Math.sqrt(ssr / df), iter, converged, ambiguous: !cov
+  };
+}
+
+/* ============================ Fitting orchestration ============================ */
+function runFits() {
+  FITS = [];
+  if (!MODEL || !DATA) return;
+  DATA.series.forEach((s, j) => {
+    if (!S.series[j].visible || s.xs.length === 0) { FITS[j] = null; return; }
+    try {
+      const est = estimates(s.xs, s.ys);
+      const p0 = [], fixed = [];
+      MODEL.params.forEach((name, i) => {
+        const key = MODEL.keys[i], cfg = S.params[key] || { value: "", fixed: false };
+        const v = parseFloat(cfg.value);
+        const auto = key in est && isFinite(est[key]) ? est[key] : 1;
+        if (cfg.fixed && !isFinite(v)) throw new Error(`${name} is fixed but has no value.`);
+        p0.push(isFinite(v) ? v : auto); fixed.push(!!cfg.fixed);
+      });
+      FITS[j] = lmFit(MODEL.fn, s.xs, s.ys, p0, fixed);
+    } catch (e) { FITS[j] = { error: e.message }; }
+  });
+}
+function paramValue(fit, name) {
+  if (!fit || fit.error || !MODEL) return null;
+  const i = MODEL.keys.indexOf(name.toLowerCase());
+  return i < 0 ? null : { v: fit.p[i], se: fit.se[i], ci: fit.ci[i], fixed: fit.fixed[i] };
+}
+
+/* ============================ Number formatting ============================ */
+function fmtNum(v, sig = 4) {
+  if (v === null || v === undefined || !isFinite(v)) return "—";
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 1e6 || a < 1e-3) return v.toExponential(sig - 1).replace("e", "E");
+  return String(Number(v.toPrecision(sig)));
+}
+function decimalsFor(se) { return Math.min(10, Math.max(0, 1 - Math.floor(Math.log10(se)))); }
+function fmtPM(v, se) {
+  if (!isFinite(se) || se <= 0) return fmtNum(v);
+  if (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3) return fmtNum(v) + " ± " + fmtNum(se, 2);
+  const d = decimalsFor(se);
+  return v.toFixed(d) + " ± " + se.toFixed(d);
+}
+function fmtTick(v, step) {
+  let d = 0;
+  while (d < 8 && Math.abs(Math.round(step * 10 ** d) - step * 10 ** d) > 1e-6) d++;
+  let s = (Math.abs(v) < step * 1e-9 ? 0 : v).toFixed(d);
+  return s.replace("-", "−");
+}
+
+/* ============================ Graph rendering ============================ */
+const measureCtx = document.createElement("canvas").getContext("2d");
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function markupSegments(str) {
+  const segs = []; let buf = "", italic = false, i = 0; const stack = [];
+  const push = () => { if (buf) { segs.push({ t: buf, it: italic, sc: stack.length ? stack[stack.length - 1] : 0 }); buf = ""; } };
+  while (i < str.length) {
+    const c = str[i];
+    if (c === "\\" && i + 1 < str.length) { buf += str[i + 1]; i += 2; continue; }
+    if (c === "*") { push(); italic = !italic; i++; continue; }
+    if ((c === "^" || c === "_") && str[i + 1] === "{") { push(); stack.push(c === "^" ? 1 : -1); i += 2; continue; }
+    if (c === "}" && stack.length) { push(); stack.pop(); i++; continue; }
+    buf += c; i++;
+  }
+  push();
+  return segs;
+}
+function markupWidth(str, fs, family) {
+  return markupSegments(str).reduce((w, s) => {
+    const size = s.sc ? fs * 0.7 : fs;
+    measureCtx.font = `${s.it ? "italic " : ""}${size}px ${family}`;
+    return w + measureCtx.measureText(s.t).width;
+  }, 0);
+}
+function markupTspans(str, fs) {
+  let shift = 0, out = "";
+  for (const s of markupSegments(str)) {
+    const target = s.sc === 1 ? -0.38 * fs : s.sc === -1 ? 0.22 * fs : 0;
+    const dy = target - shift; shift = target;
+    out += `<tspan${dy ? ` dy="${dy.toFixed(2)}"` : ""}${s.sc ? ` font-size="${(fs * 0.7).toFixed(2)}"` : ""}${s.it ? ` font-style="italic"` : ""}>${esc(s.t)}</tspan>`;
+  }
+  return out;
+}
+function niceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * e >= raw * (1 - 1e-9)) return m * e;
+  return 10 * e;
+}
+function autoAxis(lo, hi, userMin, userMax, userStep) {
+  if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const uMin = parseFloat(userMin), uMax = parseFloat(userMax), uStep = parseFloat(userStep);
+  if (isFinite(uMin)) lo = uMin; else if (lo >= 0 && lo <= hi * 0.5) lo = 0;
+  if (isFinite(uMax)) hi = uMax; else if (hi <= 0 && hi >= lo * 0.5) hi = 0;
+  if (hi <= lo) hi = lo + 1;
+  const step = uStep > 0 ? uStep : niceStep((hi - lo) / 4);
+  let mn = isFinite(uMin) ? uMin : Math.floor(lo / step + 1e-9) * step;
+  let mx = isFinite(uMax) ? uMax : Math.ceil(hi / step - 1e-9) * step;
+  if (!isFinite(uMax) && mx - hi < 0.04 * (mx - mn)) mx += step;
+  if (!isFinite(uMin) && mn !== 0 && lo - mn < 0.04 * (mx - mn)) mn -= step;
+  return { min: mn, max: mx, step };
+}
+function markerPath(shape, x, y, r, color, hollow, sw) {
+  const fill = hollow ? "#fff" : color, st = `fill="${fill}" stroke="${color}" stroke-width="${hollow ? sw : 0.5}"`;
+  const f = (v) => v.toFixed(2);
+  switch (shape) {
+    case "square": { const a = r * 0.9; return `<rect x="${f(x - a)}" y="${f(y - a)}" width="${f(2 * a)}" height="${f(2 * a)}" ${st}/>`; }
+    case "triangle": { const a = r * 1.2; return `<path d="M${f(x)},${f(y - a)}L${f(x + a * 0.95)},${f(y + a * 0.65)}L${f(x - a * 0.95)},${f(y + a * 0.65)}Z" ${st}/>`; }
+    case "tridown": { const a = r * 1.2; return `<path d="M${f(x)},${f(y + a)}L${f(x + a * 0.95)},${f(y - a * 0.65)}L${f(x - a * 0.95)},${f(y - a * 0.65)}Z" ${st}/>`; }
+    case "diamond": { const a = r * 1.25; return `<path d="M${f(x)},${f(y - a)}L${f(x + a)},${f(y)}L${f(x)},${f(y + a)}L${f(x - a)},${f(y)}Z" ${st}/>`; }
+    default: return `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" ${st}/>`;
+  }
+}
+function renderSVG() {
+  const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
+  const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55, aw = +F.axisW || 1.25;
+  const vis = DATA ? DATA.series.filter(s => S.series[s.idx].visible) : [];
+  const allX = vis.flatMap(s => s.xs.concat(s.xsEx)), allY = vis.flatMap(s => s.ys.concat(s.ysEx));
+  const xa = autoAxis(Math.min(...allX), Math.max(...allX), F.xMin, F.xMax, F.xStep);
+  const ya = autoAxis(Math.min(...allY), Math.max(...allY), F.yMin, F.yMax, F.yStep);
+  const ticks = (a) => { const out = []; const n = Math.round((a.max - a.min) / a.step); if (n > 200 || n < 0) return [a.min, a.max]; for (let i = 0; i <= n + 1e-9; i++) out.push(a.min + i * a.step); if (out[out.length - 1] < a.max - a.step * 1e-6) out.push(a.max); return out; };
+  const xt = ticks(xa), yt = ticks(ya);
+  measureCtx.font = `${fs}px ${fam}`;
+  const yLabW = Math.max(...yt.map(v => measureCtx.measureText(fmtTick(v, ya.step)).width));
+  const xLastW = measureCtx.measureText(fmtTick(xt[xt.length - 1], xa.step)).width;
+  const ml = Math.ceil(tick + 5 + yLabW + 10 + tfs * 1.05 + 8);
+  const mt = Math.ceil(fs * 0.7);
+  const mr = Math.ceil(Math.max(12, xLastW / 2 + 6));
+  const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
+  const W = ml + pw + mr, H = mt + ph + mb;
+  const X = (v) => ml + (v - xa.min) / (xa.max - xa.min) * pw;
+  const Y = (v) => mt + ph - (v - ya.min) / (ya.max - ya.min) * ph;
+  const f = (v) => v.toFixed(2);
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
+  s += `<defs><clipPath id="plotclip"><rect x="${ml}" y="${mt - 2}" width="${pw + 2}" height="${ph + 4}"/></clipPath></defs>`;
+
+  // Tm lines
+  if (F.tmLine) vis.forEach(ser => {
+    const tm = paramValue(FITS[ser.idx], "Tm");
+    if (tm && isFinite(tm.v) && tm.v >= xa.min && tm.v <= xa.max)
+      s += `<line x1="${f(X(tm.v))}" y1="${mt}" x2="${f(X(tm.v))}" y2="${mt + ph}" stroke="${S.series[ser.idx].color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.8"/>`;
+  });
+  // curves
+  if (F.showCurve && MODEL) {
+    s += `<g clip-path="url(#plotclip)" fill="none" stroke-width="${+F.lineW}" stroke-linejoin="round">`;
+    vis.forEach(ser => {
+      const fit = FITS[ser.idx];
+      if (!fit || fit.error || !(+F.lineW > 0)) return;
+      let x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs);
+      if (F.curveAxis) { x0 = xa.min; x1 = xa.max; }
+      let d = "", pen = false;
+      for (let i = 0; i <= 400; i++) {
+        const x = x0 + (x1 - x0) * i / 400, y = MODEL.fn(x, fit.p);
+        if (!isFinite(y)) { pen = false; continue; }
+        const yy = Math.max(-1e4, Math.min(1e4, Y(y)));
+        d += (pen ? "L" : "M") + f(X(x)) + "," + f(yy); pen = true;
+      }
+      s += `<path d="${d}" stroke="${S.series[ser.idx].color}"/>`;
+    });
+    s += `</g>`;
+  }
+  // points
+  if (F.showPoints && +F.markerSize > 0) vis.forEach(ser => {
+    const col = S.series[ser.idx].color, shape = SHAPES[ser.idx % SHAPES.length], r = +F.markerSize;
+    const draw = (xs, ys, faded) => {
+      let g = `<g${faded ? ' opacity="0.3"' : ""}>`;
+      for (let i = 0; i < xs.length; i++) {
+        if (xs[i] < xa.min || xs[i] > xa.max || ys[i] < ya.min || ys[i] > ya.max) continue;
+        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, F.hollow, Math.max(1, r / 4));
+      }
+      return g + "</g>";
+    };
+    s += draw(ser.xsEx, ser.ysEx, true) + draw(ser.xs, ser.ys, false);
+  });
+
+  // axes
+  const by = mt + ph;
+  s += `<g stroke="#000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
+  s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/>`;
+  s += `<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${f(by)}"/>`;
+  const minorX = Math.max(0, Math.round(+F.xMinor || 0)), minorY = Math.max(0, Math.round(+F.yMinor || 0));
+  xt.forEach((v, i) => {
+    s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`;
+    if (i < xt.length - 1) for (let k = 1; k <= minorX; k++) { const vv = v + (xt[i + 1] - v) * k / (minorX + 1); s += `<line x1="${f(X(vv))}" y1="${f(by)}" x2="${f(X(vv))}" y2="${f(by + minorTick)}"/>`; }
+  });
+  yt.forEach((v, i) => {
+    s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`;
+    if (i < yt.length - 1) for (let k = 1; k <= minorY; k++) { const vv = v + (yt[i + 1] - v) * k / (minorY + 1); s += `<line x1="${ml}" y1="${f(Y(vv))}" x2="${f(ml - minorTick)}" y2="${f(Y(vv))}"/>`; }
+  });
+  s += `</g><g fill="#000">`;
+  xt.forEach(v => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${fmtTick(v, xa.step)}</text>`; });
+  yt.forEach(v => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${fmtTick(v, ya.step)}</text>`; });
+  // titles
+  s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.xTitle || "", tfs)}</text>`;
+  const ty = mt + ph / 2, tx = ml - tick - 5 - yLabW - 10 - tfs * 0.25;
+  s += `<text transform="translate(${f(tx)},${f(ty)}) rotate(-90)" x="0" y="0" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.yTitle || "", tfs)}</text>`;
+  s += `</g>`;
+
+  // legend
+  if (F.legend !== "off" && vis.length) {
+    const lfs = fs * 0.85, lh = lfs * 1.45, r = Math.min(+F.markerSize || 5, lfs * 0.4);
+    const items = vis.map(ser => {
+      let label = ser.name;
+      const tm = paramValue(FITS[ser.idx], "Tm");
+      if (F.legendTm && tm && isFinite(tm.v)) label += ` (*T*_{m} = ${tm.v.toFixed(1)} °C)`;
+      return { ser, label, w: markupWidth(label, lfs, fam) };
+    });
+    const sym = lfs * 2.0, lw = sym + Math.max(...items.map(i => i.w)), lhTot = lh * items.length;
+    const pad = 8;
+    let lx = F.legend.endsWith("l") ? ml + pad + 6 : ml + pw - pad - lw;
+    let ly = F.legend.startsWith("t") ? mt + pad : mt + ph - pad - lhTot;
+    s += `<g font-size="${f(lfs)}">`;
+    items.forEach((it, k) => {
+      const cy = ly + lh * k + lh / 2, col = S.series[it.ser.idx].color;
+      if (F.showCurve && FITS[it.ser.idx] && !FITS[it.ser.idx].error && +F.lineW > 0) s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${col}" stroke-width="${+F.lineW}"/>`;
+      if (F.showPoints) s += markerPath(SHAPES[it.ser.idx % SHAPES.length], lx + sym * 0.4, cy, r, col, F.hollow, Math.max(1, r / 4));
+      s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(it.label, lfs)}</text>`;
+    });
+    s += `</g>`;
+  }
+  s += `</svg>`;
+  return { svg: s, width: W, height: H };
+}
+async function svgToPngDataUrl(svg, w, h, scale) {
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  await img.decode();
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/png");
+}
+
+/* ============================ UI: data sets, params, results ============================ */
+function renderSeriesList() {
+  const el = $("seriesList");
+  if (!DATA || !DATA.series.length) { el.innerHTML = '<span class="hint">No data yet.</span>'; return; }
+  el.innerHTML = "";
+  DATA.series.forEach((ser, j) => {
+    const cfg = S.series[j];
+    const row = document.createElement("div"); row.className = "series-item";
+    row.innerHTML = `<input type="checkbox" ${cfg.visible ? "checked" : ""} title="Show and fit">
+      <input type="color" value="${cfg.color}" title="Colour">
+      <input type="text" value="${esc(ser.name)}" title="Name used in the legend">
+      <span class="hint">${ser.xs.length} pts</span>`;
+    const [cb, col, name] = row.querySelectorAll("input");
+    cb.onchange = () => { cfg.visible = cb.checked; refresh(true); };
+    col.oninput = () => { cfg.color = col.value; refresh(false); };
+    name.onchange = () => { cfg.name = name.value.trim(); refresh(false); };
+    el.appendChild(row);
+  });
+}
+function renderParamTable() {
+  const tbl = $("paramTable");
+  if (!MODEL) { tbl.innerHTML = ""; return; }
+  const first = FITS.find(f => f && !f.error);
+  let h = `<tr><th>Parameter</th><th>Value (blank = auto)</th><th>Fix</th><th class="num">Fitted${first ? "" : ""}</th></tr>`;
+  MODEL.params.forEach((name, i) => {
+    const key = MODEL.keys[i], cfg = S.params[key] || (S.params[key] = { value: "", fixed: false });
+    h += `<tr><td>${esc(name)}</td><td><input type="text" data-k="${key}" value="${esc(cfg.value)}" placeholder="auto"></td>
+      <td><input type="checkbox" data-k="${key}" ${cfg.fixed ? "checked" : ""}></td>
+      <td class="num">${first ? fmtNum(first.p[i]) : ""}</td></tr>`;
+  });
+  tbl.innerHTML = h;
+  tbl.querySelectorAll("input[type=text]").forEach(inp => inp.onchange = () => { S.params[inp.dataset.k].value = inp.value.trim().replace(",", "."); refresh(true); });
+  tbl.querySelectorAll("input[type=checkbox]").forEach(inp => inp.onchange = () => { S.params[inp.dataset.k].fixed = inp.checked; refresh(true); });
+}
+function renderResults() {
+  const el = $("results");
+  if (!MODEL || !DATA || !DATA.series.length) { el.innerHTML = "Fit results appear here."; return; }
+  let h = "";
+  DATA.series.forEach((ser, j) => {
+    if (!S.series[j].visible) return;
+    const fit = FITS[j], col = S.series[j].color;
+    h += `<div class="card"><h4><span class="swatch" style="background:${col}"></span>${esc(ser.name)}</h4>`;
+    if (!fit) { h += `<div class="hint">No points.</div></div>`; return; }
+    if (fit.error) { h += `<div class="msg err">${esc(fit.error)}</div></div>`; return; }
+    const tm = paramValue(fit, "Tm");
+    if (tm) h += `<div class="big"><i>T</i><sub>m</sub> = ${fmtPM(tm.v, tm.se)} °C</div>`;
+    h += `<table class="t"><tr><th>Parameter</th><th class="num">Best fit</th><th class="num">Std. error</th><th class="num">95% CI</th></tr>`;
+    MODEL.params.forEach((name, i) => {
+      h += `<tr><td>${esc(name)}</td><td class="num">${fmtNum(fit.p[i], 5)}</td>`;
+      h += fit.fixed[i] ? `<td class="num" colspan="2">fixed</td></tr>` : `<td class="num">${fmtNum(fit.se[i], 3)}</td><td class="num">${fmtNum(fit.ci[i][0])} to ${fmtNum(fit.ci[i][1])}</td></tr>`;
+    });
+    h += `</table><div class="hint" style="margin-top:4px">R² = ${fit.r2.toFixed(5)} · S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} · N = ${fit.n} · df = ${fit.df} · ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " · <b>ambiguous</b> (parameters not identifiable)" : ""}</div></div>`;
+  });
+  el.innerHTML = h || "No visible data sets.";
+}
+function resultsMatrix() {
+  const cols = DATA.series.filter(s => S.series[s.idx].visible && FITS[s.idx] && !FITS[s.idx].error);
+  const rows = [["Parameter", ...cols.map(s => s.name)]];
+  MODEL.params.forEach((name, i) => {
+    const label = name.toLowerCase() === "tm" ? "Tm (°C)" : name;
+    rows.push([label, ...cols.map(s => { const f = FITS[s.idx]; return f.fixed[i] ? fmtNum(f.p[i]) + " (fixed)" : fmtPM(f.p[i], f.se[i]); })]);
+  });
+  const tmI = MODEL.keys.indexOf("tm");
+  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "—"; })]);
+  rows.push(["R²", ...cols.map(s => FITS[s.idx].r2.toFixed(4))]);
+  rows.push(["Sy.x", ...cols.map(s => fmtNum(FITS[s.idx].syx, 3))]);
+  rows.push(["N", ...cols.map(s => String(FITS[s.idx].n))]);
+  return rows;
+}
+
+/* ============================ Refresh cycle ============================ */
+function refresh(refit) {
+  try { buildData(); } catch (e) { DATA = null; }
+  if (refit) {
+    try { MODEL = compileModel(S.eqText); $("eqMsg").className = "msg"; $("eqMsg").textContent = "Parameters: " + MODEL.params.join(", "); }
+    catch (e) { MODEL = null; $("eqMsg").className = "msg err"; $("eqMsg").textContent = e.message; }
+    runFits();
+    renderSeriesList();
+    renderParamTable();
+    renderResults();
+  }
+  $("preview").innerHTML = renderSVG().svg;
+  const errs = FITS.filter(f => f && f.error).length, ok = FITS.filter(f => f && !f.error);
+  if (!DATA || !DATA.series.length) setStatus("Paste data in the Data tab, or load the example.");
+  else if (!MODEL) setStatus("Equation error — see the Model tab.", "err");
+  else if (errs) setStatus(`${errs} fit(s) failed — see Results.`, "err");
+  else if (ok.length) {
+    const tms = DATA.series.filter(s => FITS[s.idx] && !FITS[s.idx].error).map(s => paramValue(FITS[s.idx], "Tm")).filter(Boolean);
+    setStatus(tms.length ? "Tm = " + tms.map(t => fmtPM(t.v, t.se)).join(", ") + " °C" : `Fitted ${ok.length} data set(s).`, "ok");
+  }
+  store();
+}
+let refitTimer = null;
+function refreshSoon(refit) { clearTimeout(refitTimer); refitTimer = setTimeout(() => refresh(refit), 250); }
+
+/* ============================ Example data ============================ */
+function exampleData() {
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const fn = compileModel(PRESETS.cmp.text).fn;
+  const lines = ["T (°C)\tCMP-1\tCMP-2"];
+  for (let x = 10; x <= 60 + 1e-9; x += 1) {
+    const y1 = fn(x, [42.5, 38.75, -0.11, 16.0, -0.005]) + gauss() * 0.07;
+    const y2 = fn(x, [33.0, 36.5, -0.105, 15.2, -0.006]) + gauss() * 0.07;
+    lines.push(`${x.toFixed(1)}\t${y1.toFixed(3)}\t${y2.toFixed(3)}`);
+  }
+  return lines.join("\n");
+}
+
+/* ============================ Bind form ============================ */
+const FMT_FIELDS = ["xTitle", "yTitle", "xMin", "xMax", "xStep", "xMinor", "yMin", "yMax", "yStep", "yMinor", "plotW", "plotH", "fontSize", "fontFamily", "markerSize", "lineW", "axisW", "legend", "exportCm", "exportFmt"];
+const FMT_CHECKS = ["showPoints", "showCurve", "curveAxis", "legendTm", "tmLine", "hollow"];
+function loadForm() {
+  $("data").value = S.dataText; $("yMult").value = S.yMult; $("xFrom").value = S.xFrom; $("xTo").value = S.xTo;
+  $("eq").value = S.eqText;
+  const match = Object.keys(PRESETS).find(k => PRESETS[k].text.trim() === S.eqText.trim());
+  $("preset").value = match || "custom";
+  FMT_FIELDS.forEach(k => { $(k).value = S.fmt[k] ?? ""; });
+  FMT_CHECKS.forEach(k => { $(k).checked = !!S.fmt[k]; });
+}
+function applyState(obj) {
+  S = { ...S, ...obj, fmt: { ...DEFAULT_FMT, ...(obj.fmt || {}) } };
+  S.series = S.series || []; S.params = S.params || {};
+  loadForm(); refresh(true);
+}
+function initUI() {
+  const sel = $("preset");
+  sel.innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("") + `<option value="custom">Custom equation</option>`;
+  sel.onchange = () => { if (PRESETS[sel.value]) { S.eqText = PRESETS[sel.value].text; $("eq").value = S.eqText; refresh(true); } };
+  $("eq").oninput = () => {
+    S.eqText = $("eq").value;
+    const match = Object.keys(PRESETS).find(k => PRESETS[k].text.trim() === S.eqText.trim());
+    sel.value = match || "custom"; refreshSoon(true);
+  };
+  $("data").oninput = () => { S.dataText = $("data").value; refreshSoon(true); };
+  ["yMult", "xFrom", "xTo"].forEach(k => $(k).oninput = () => { S[k] = $(k).value; refreshSoon(true); });
+  FMT_FIELDS.forEach(k => $(k).oninput = () => { S.fmt[k] = $(k).value; refreshSoon(false); });
+  FMT_CHECKS.forEach(k => $(k).onchange = () => { S.fmt[k] = $(k).checked; refresh(false); });
+  $("btnResetFmt").onclick = () => { S.fmt = { ...DEFAULT_FMT }; loadForm(); refresh(false); };
+
+  document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + b.dataset.tab));
+  });
+
+  $("btnFit").onclick = () => { refresh(true); };
+  $("btnExample").onclick = () => { S.dataText = exampleData(); S.series = []; $("data").value = S.dataText; refresh(true); };
+  $("btnClear").onclick = () => { S.dataText = ""; S.series = []; $("data").value = ""; refresh(true); };
+  $("btnFile").onclick = () => $("file").click();
+  $("file").onchange = async () => {
+    const f = $("file").files[0]; if (!f) return;
+    S.dataText = await f.text(); S.series = []; $("data").value = S.dataText; refresh(true); $("file").value = "";
+  };
+  $("btnCopy").onclick = async () => {
+    if (!MODEL || !DATA) return;
+    const text = resultsMatrix().map(r => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    setStatus("Results copied — paste into Excel or Word.", "ok");
+  };
+  $("btnPng").onclick = async () => {
+    const { svg, width, height } = renderSVG();
+    const scale = (S.fmt.exportCm / 2.54 * (S.fmt.exportFmt === "png600" ? 600 : 300)) / width;
+    download(await svgToPngDataUrl(svg, width, height, scale), "cdfit-graph.png");
+  };
+  $("btnSvg").onclick = () => {
+    const { svg } = renderSVG();
+    download(URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), "cdfit-graph.svg");
+  };
+  $("btnInsert").onclick = () => wordAction(() => insertGraph(false), "Graph inserted.");
+  $("btnReplace").onclick = () => wordAction(() => insertGraph(true), "Graph updated.");
+  $("btnLoad").onclick = () => wordAction(loadFromSelectedGraph, "Graph loaded — edit and click “Update selected graph”.");
+  $("btnTable").onclick = () => wordAction(insertResultsTable, "Results table inserted.");
+  $("btnImport").onclick = () => wordAction(importTable, "Data imported from the document.");
+}
+function download(url, name) { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+/* ============================ Word integration ============================ */
+async function wordAction(fn, okMsg) {
+  try { setStatus("Working…"); await fn(); setStatus(okMsg, "ok"); }
+  catch (e) { console.error(e); setStatus((e && e.message) || String(e), "err"); }
+}
+function summaryText() {
+  const parts = (DATA ? DATA.series : []).filter(s => S.series[s.idx].visible).map(s => {
+    const tm = paramValue(FITS[s.idx], "Tm");
+    return tm ? `${s.name}: Tm = ${fmtPM(tm.v, tm.se)} °C` : s.name;
+  });
+  return "CD melting curve fitted with CD Fit. " + parts.join("; ");
+}
+async function insertGraph(replace) {
+  if (!DATA || !DATA.series.length) throw new Error("No data to plot.");
+  const { svg, width, height } = renderSVG();
+  if (S.fmt.exportFmt === "svg") {
+    if (!Office.context.requirements.isSetSupported("ImageCoercion", "1.2")) throw new Error("This version of Word cannot insert SVG — choose a PNG format.");
+    await new Promise((res, rej) => Office.context.document.setSelectedDataAsync(svg, { coercionType: Office.CoercionType.XmlSvg },
+      r => (r.status === Office.AsyncResultStatus.Succeeded ? res() : rej(r.error))));
+    return;
+  }
+  const dpi = S.fmt.exportFmt === "png600" ? 600 : 300, cm = +S.fmt.exportCm || 12;
+  const url = await svgToPngDataUrl(svg, width, height, (cm / 2.54 * dpi) / width);
+  const b64 = url.slice(url.indexOf(",") + 1);
+  const state = JSON.stringify(S);
+  await Word.run(async (ctx) => {
+    const sel = ctx.document.getSelection();
+    let pic;
+    if (replace) {
+      const old = sel.inlinePictures.getFirstOrNullObject();
+      await ctx.sync();
+      if (old.isNullObject) throw new Error("Click a graph picture in the document first.");
+      pic = old.insertInlinePictureFromBase64(b64, "Replace");
+    } else {
+      pic = sel.insertInlinePictureFromBase64(b64, "End");
+    }
+    pic.lockAspectRatio = true;
+    pic.width = cm / 2.54 * 72;
+    pic.altTextTitle = "CD Fit graph";
+    pic.altTextDescription = summaryText() + "\n\n" + TAG + state;
+    await ctx.sync();
+  });
+}
+async function loadFromSelectedGraph() {
+  let desc = "";
+  await Word.run(async (ctx) => {
+    const pic = ctx.document.getSelection().inlinePictures.getFirstOrNullObject();
+    pic.load("altTextDescription");
+    await ctx.sync();
+    if (pic.isNullObject) throw new Error("Click a graph picture in the document first.");
+    desc = pic.altTextDescription || "";
+  });
+  const k = desc.indexOf(TAG);
+  if (k < 0) throw new Error("This picture was not made by CD Fit (no saved data in its alt text).");
+  applyState(JSON.parse(desc.slice(k + TAG.length)));
+}
+async function insertResultsTable() {
+  if (!MODEL || !DATA) throw new Error("Nothing to report yet.");
+  const rows = resultsMatrix();
+  if (rows[0].length < 2) throw new Error("No successful fits to report.");
+  await Word.run(async (ctx) => {
+    const para = ctx.document.getSelection().paragraphs.getLast();
+    const t = para.insertTable(rows.length, rows[0].length, "After", rows);
+    t.headerRowCount = 1;
+    t.font.size = 10;
+    await ctx.sync();
+  });
+}
+async function importTable() {
+  let text = "";
+  await Word.run(async (ctx) => {
+    const sel = ctx.document.getSelection();
+    const inside = sel.parentTableOrNullObject;
+    const within = sel.tables.getFirstOrNullObject();
+    inside.load("values"); within.load("values"); sel.load("text");
+    await ctx.sync();
+    const t = !within.isNullObject ? within : !inside.isNullObject ? inside : null;
+    text = t ? t.values.map(r => r.map(c => c.trim()).join("\t")).join("\n") : sel.text;
+  });
+  if (!text.trim()) throw new Error("Select a table (or tab-separated text) in the document first.");
+  S.dataText = text; S.series = []; $("data").value = text; refresh(true);
+}
+
+/* ============================ Start ============================ */
+function markWord() { document.body.classList.add("in-word"); $("hostLabel").textContent = "Word"; }
+function start(inWord) {
+  if (inWord) markWord();
+  initUI();
+  const saved = restoreStored();
+  if (saved) applyState(saved);
+  else { S.dataText = exampleData(); loadForm(); refresh(true); }
+}
+let started = false;
+function startOnce(inWord) { if (!started) { started = true; start(inWord); } }
+if (typeof Office !== "undefined" && Office.onReady) {
+  Office.onReady(info => {
+    const w = !!info && info.host === Office.HostType.Word;
+    if (started) { if (w) markWord(); } else startOnce(w);
+  });
+  setTimeout(() => startOnce(false), 5000); // office.js failed to initialise: run in browser mode
+} else {
+  startOnce(false);
+}
+</script>
+</body>
+</html>
