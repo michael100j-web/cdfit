@@ -84,7 +84,7 @@
   <button class="browser-only" id="btnPng">Download PNG</button>
   <button class="browser-only" id="btnSvg">Download SVG</button>
 </div>
-<div id="linked"><span>📈 Showing the data saved in the <b>selected graph</b>. Edit anything, then save it back into the graph.</span><button class="small primary" id="btnLinkedSave">Save to graph</button></div>
+<div id="linked"><span>ðŸ“ˆ Showing the data saved in the <b>selected graph</b>. Edit anything, then save it back into the graph.</span><button class="small primary" id="btnLinkedSave">Save to graph</button></div>
 <div id="status"></div>
 
 <nav class="tabs" role="tablist">
@@ -102,7 +102,7 @@
   <div class="row">
     <button class="small" id="btnExample">Load example</button>
     <button class="small word-only" id="btnImport" title="Select a table in the document first">Import table from document</button>
-    <button class="small" id="btnFile">Open file…</button>
+    <button class="small" id="btnFile">Open fileâ€¦</button>
     <input type="file" id="file" accept=".csv,.txt,.tsv,.dat" hidden>
     <button class="small" id="btnClear">Clear</button>
   </div>
@@ -196,10 +196,10 @@
 /* ============================ Presets ============================ */
 const PRESETS = {
   cmp: {
-    label: "Tm of CMPs (trimer ⇌ 3 monomers, ΔH fixed)",
+    label: "Tm of CMPs (trimer â‡Œ 3 monomers, Î”H fixed)",
     text:
 `; Temp vs. Elipticity -- Tm of CMPs
-; X: Temperature (°C)   Y: Ellipticity
+; X: Temperature (Â°C)   Y: Ellipticity
 R=8.31
 H=-500000
 K=EXP(H/(R*(X+273.15))*((X+273.15)/(Tm+273.15)-1)-ln(0.75*0.0002^2))
@@ -212,10 +212,10 @@ CDN=REFN+DEN*(X+273.15)
 Y=F*(CDN-CDU)+CDU`
   },
   twostate: {
-    label: "Two-state unfolding, monomolecular (ΔH fitted)",
+    label: "Two-state unfolding, monomolecular (Î”H fitted)",
     text:
 `; Monomolecular two-state transition, sloping baselines
-; X: Temperature (°C)   Y: Ellipticity   H: folding enthalpy (J/mol, negative)
+; X: Temperature (Â°C)   Y: Ellipticity   H: folding enthalpy (J/mol, negative)
 R=8.314
 T=X+273.15
 K=EXP(-H/R*(1/T-1/(Tm+273.15)))
@@ -236,8 +236,8 @@ const SHAPES = ["circle", "square", "triangle", "diamond", "tridown"];
 const TAG = "#CDFIT-STATE ";
 
 const DEFAULT_FMT = {
-  xTitle: "*T* (°C)",
-  yTitle: "*θ*_{225} (10^{3} deg cm^{2} dmol^{-1})",
+  xTitle: "*T* (Â°C)",
+  yTitle: "*Î¸*_{225} (10^{3} deg cm^{2} dmol^{-1})",
   xMin: "", xMax: "", xStep: "", xMinor: 1,
   yMin: "", yMax: "", yStep: "", yMinor: 1,
   plotW: 430, plotH: 290, fontSize: 16, fontFamily: "Arial",
@@ -270,7 +270,7 @@ function setStatus(msg, kind) { const el = $("status"); el.textContent = msg || 
 function parseNum(s) {
   s = String(s).trim();
   if (s === "") return NaN;
-  s = s.replace(/−/g, "-").replace(/\s/g, "");
+  s = s.replace(/âˆ’/g, "-").replace(/\s/g, "");
   if (!/^[-+]?(\d+[.,]?\d*|[.,]\d+)([eE][-+]?\d+)?$/.test(s)) return NaN;
   return parseFloat(s.replace(",", "."));
 }
@@ -361,7 +361,7 @@ function compileModel(text) {
     defs.push({ name, key: name.toLowerCase(), expr: line.slice(eqi + 1), line: k + 1 });
   });
   if (!defs.length) throw new Error("The equation is empty.");
-  if (defs[defs.length - 1].key !== "y") throw new Error("The last definition must be Y=…");
+  if (defs[defs.length - 1].key !== "y") throw new Error("The last definition must be Y=â€¦");
   const assignedAll = new Set(defs.map(d => d.key));
   const defined = new Set();
   const params = [];          // display names
@@ -456,7 +456,7 @@ function estimates(xs, ys) {
   };
 }
 
-/* ============================ Levenberg–Marquardt ============================ */
+/* ============================ Levenbergâ€“Marquardt ============================ */
 function solveScaled(A, g) {
   const m = g.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
   const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat([g[i] / D[i]]));
@@ -595,7 +595,7 @@ function paramValue(fit, name) {
 
 /* ============================ Number formatting ============================ */
 function fmtNum(v, sig = 4) {
-  if (v === null || v === undefined || !isFinite(v)) return "—";
+  if (v === null || v === undefined || !isFinite(v)) return "â€”";
   if (v === 0) return "0";
   const a = Math.abs(v);
   if (a >= 1e6 || a < 1e-3) return v.toExponential(sig - 1).replace("e", "E");
@@ -604,15 +604,15 @@ function fmtNum(v, sig = 4) {
 function decimalsFor(se) { return Math.min(10, Math.max(0, 1 - Math.floor(Math.log10(se)))); }
 function fmtPM(v, se) {
   if (!isFinite(se) || se <= 0) return fmtNum(v);
-  if (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3) return fmtNum(v) + " ± " + fmtNum(se, 2);
+  if (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3) return fmtNum(v) + " Â± " + fmtNum(se, 2);
   const d = decimalsFor(se);
-  return v.toFixed(d) + " ± " + se.toFixed(d);
+  return v.toFixed(d) + " Â± " + se.toFixed(d);
 }
 function fmtTick(v, step) {
   let d = 0;
   while (d < 8 && Math.abs(Math.round(step * 10 ** d) - step * 10 ** d) > 1e-6) d++;
   let s = (Math.abs(v) < step * 1e-9 ? 0 : v).toFixed(d);
-  return s.replace("-", "−");
+  return s.replace("-", "âˆ’");
 }
 
 /* ============================ Graph rendering ============================ */
@@ -781,7 +781,7 @@ function renderSVG(opts = {}) {
     const items = vis.map(ser => {
       let label = ser.name;
       const tm = paramValue(FITS[ser.idx], "Tm");
-      if (F.legendTm && tm && isFinite(tm.v)) label += ` (*T*_{m} = ${tm.v.toFixed(1)} °C)`;
+      if (F.legendTm && tm && isFinite(tm.v)) label += ` (*T*_{m} = ${tm.v.toFixed(1)} Â°C)`;
       return { ser, label, w: markupWidth(label, lfs, fam) };
     });
     const sym = lfs * 2.0, lw = sym + Math.max(...items.map(i => i.w)), lhTot = lh * items.length;
@@ -857,13 +857,13 @@ function renderResults() {
     if (!fit) { h += `<div class="hint">No points.</div></div>`; return; }
     if (fit.error) { h += `<div class="msg err">${esc(fit.error)}</div></div>`; return; }
     const tm = paramValue(fit, "Tm");
-    if (tm) h += `<div class="big"><i>T</i><sub>m</sub> = ${fmtPM(tm.v, tm.se)} °C</div>`;
+    if (tm) h += `<div class="big"><i>T</i><sub>m</sub> = ${fmtPM(tm.v, tm.se)} Â°C</div>`;
     h += `<table class="t"><tr><th>Parameter</th><th class="num">Best fit</th><th class="num">Std. error</th><th class="num">95% CI</th></tr>`;
     MODEL.params.forEach((name, i) => {
       h += `<tr><td>${esc(name)}</td><td class="num">${fmtNum(fit.p[i], 5)}</td>`;
       h += fit.fixed[i] ? `<td class="num" colspan="2">fixed</td></tr>` : `<td class="num">${fmtNum(fit.se[i], 3)}</td><td class="num">${fmtNum(fit.ci[i][0])} to ${fmtNum(fit.ci[i][1])}</td></tr>`;
     });
-    h += `</table><div class="hint" style="margin-top:4px">R² = ${fit.r2.toFixed(5)} · S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} · N = ${fit.n} · df = ${fit.df} · ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " · <b>ambiguous</b> (parameters not identifiable)" : ""}</div></div>`;
+    h += `</table><div class="hint" style="margin-top:4px">RÂ² = ${fit.r2.toFixed(5)} Â· S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} Â· N = ${fit.n} Â· df = ${fit.df} Â· ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " Â· <b>ambiguous</b> (parameters not identifiable)" : ""}</div></div>`;
   });
   el.innerHTML = h || "No visible data sets.";
 }
@@ -871,12 +871,12 @@ function resultsMatrix() {
   const cols = DATA.series.filter(s => S.series[s.idx].visible && FITS[s.idx] && !FITS[s.idx].error);
   const rows = [["Parameter", ...cols.map(s => s.name)]];
   MODEL.params.forEach((name, i) => {
-    const label = name.toLowerCase() === "tm" ? "Tm (°C)" : name;
+    const label = name.toLowerCase() === "tm" ? "Tm (Â°C)" : name;
     rows.push([label, ...cols.map(s => { const f = FITS[s.idx]; return f.fixed[i] ? fmtNum(f.p[i]) + " (fixed)" : fmtPM(f.p[i], f.se[i]); })]);
   });
   const tmI = MODEL.keys.indexOf("tm");
-  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "—"; })]);
-  rows.push(["R²", ...cols.map(s => FITS[s.idx].r2.toFixed(4))]);
+  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "â€”"; })]);
+  rows.push(["RÂ²", ...cols.map(s => FITS[s.idx].r2.toFixed(4))]);
   rows.push(["Sy.x", ...cols.map(s => fmtNum(FITS[s.idx].syx, 3))]);
   rows.push(["N", ...cols.map(s => String(FITS[s.idx].n))]);
   return rows;
@@ -896,11 +896,11 @@ function refresh(refit) {
   $("preview").innerHTML = renderSVG({ interactive: true }).svg;
   const errs = FITS.filter(f => f && f.error).length, ok = FITS.filter(f => f && !f.error);
   if (!DATA || !DATA.series.length) setStatus("Paste data in the Data tab, or load the example.");
-  else if (!MODEL) setStatus("Equation error — see the Model tab.", "err");
-  else if (errs) setStatus(`${errs} fit(s) failed — see Results.`, "err");
+  else if (!MODEL) setStatus("Equation error â€” see the Model tab.", "err");
+  else if (errs) setStatus(`${errs} fit(s) failed â€” see Results.`, "err");
   else if (ok.length) {
     const tms = DATA.series.filter(s => FITS[s.idx] && !FITS[s.idx].error).map(s => paramValue(FITS[s.idx], "Tm")).filter(Boolean);
-    setStatus(tms.length ? "Tm = " + tms.map(t => fmtPM(t.v, t.se)).join(", ") + " °C" : `Fitted ${ok.length} data set(s).`, "ok");
+    setStatus(tms.length ? "Tm = " + tms.map(t => fmtPM(t.v, t.se)).join(", ") + " Â°C" : `Fitted ${ok.length} data set(s).`, "ok");
   }
   store();
 }
@@ -912,7 +912,7 @@ function exampleData() {
   let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
   const fn = compileModel(PRESETS.cmp.text).fn;
-  const lines = ["T (°C)\tCMP-1\tCMP-2"];
+  const lines = ["T (Â°C)\tCMP-1\tCMP-2"];
   for (let x = 10; x <= 60 + 1e-9; x += 1) {
     const y1 = fn(x, [42.5, 38.75, -0.11, 16.0, -0.005]) + gauss() * 0.07;
     const y2 = fn(x, [33.0, 36.5, -0.105, 15.2, -0.006]) + gauss() * 0.07;
@@ -970,7 +970,7 @@ function initUI() {
     const text = resultsMatrix().map(r => r.join("\t")).join("\n");
     try { await navigator.clipboard.writeText(text); }
     catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
-    setStatus("Results copied — paste into Excel or Word.", "ok");
+    setStatus("Results copied â€” paste into Excel or Word.", "ok");
   };
   $("btnPng").onclick = async () => {
     const { svg, width, height } = renderSVG();
@@ -983,7 +983,7 @@ function initUI() {
   };
   $("btnInsert").onclick = () => wordAction(() => insertGraph(false), "Graph inserted.");
   $("btnReplace").onclick = () => wordAction(() => insertGraph(true), "Graph updated.");
-  $("btnLoad").onclick = () => wordAction(loadFromSelectedGraph, "Graph loaded — edit and click “Update selected graph”.");
+  $("btnLoad").onclick = () => wordAction(loadFromSelectedGraph, "Graph loaded â€” edit and click â€œUpdate selected graphâ€.");
   $("btnLinkedSave").onclick = () => wordAction(() => insertGraph(true), "Saved into the graph.");
   $("btnTable").onclick =() => wordAction(insertResultsTable, "Results table inserted.");
   $("btnImport").onclick = () => wordAction(importTable, "Data imported from the document.");
@@ -992,13 +992,13 @@ function download(url, name) { const a = document.createElement("a"); a.href = u
 
 /* ============================ Word integration ============================ */
 async function wordAction(fn, okMsg) {
-  try { setStatus("Working…"); await fn(); setStatus(okMsg, "ok"); }
+  try { setStatus("Workingâ€¦"); await fn(); setStatus(okMsg, "ok"); }
   catch (e) { console.error(e); setStatus((e && e.message) || String(e), "err"); }
 }
 function summaryText() {
   const parts = (DATA ? DATA.series : []).filter(s => S.series[s.idx].visible).map(s => {
     const tm = paramValue(FITS[s.idx], "Tm");
-    return tm ? `${s.name}: Tm = ${fmtPM(tm.v, tm.se)} °C` : s.name;
+    return tm ? `${s.name}: Tm = ${fmtPM(tm.v, tm.se)} Â°C` : s.name;
   });
   return "CD melting curve fitted with CD Fit. " + parts.join("; ");
 }
@@ -1006,7 +1006,7 @@ async function insertGraph(replace) {
   if (!DATA || !DATA.series.length) throw new Error("No data to plot.");
   const { svg, width, height } = renderSVG();
   if (S.fmt.exportFmt === "svg") {
-    if (!Office.context.requirements.isSetSupported("ImageCoercion", "1.2")) throw new Error("This version of Word cannot insert SVG — choose a PNG format.");
+    if (!Office.context.requirements.isSetSupported("ImageCoercion", "1.2")) throw new Error("This version of Word cannot insert SVG â€” choose a PNG format.");
     await new Promise((res, rej) => Office.context.document.setSelectedDataAsync(svg, { coercionType: Office.CoercionType.XmlSvg },
       r => (r.status === Office.AsyncResultStatus.Succeeded ? res() : rej(r.error))));
     return;
@@ -1038,8 +1038,7 @@ async function insertGraph(replace) {
     await ctx.sync();
   });
   if (replace) { try { Office.context.document.settings.saveAsync(() => {}); } catch (e) {} }
-  linkedJson = state;
-  if (replace) setLinked(true);
+  if (replace) { selectedJson = state; setLinked(true); } // still selected; a new graph loads when clicked
 }
 
 /* Graph data lives in the picture itself (alt text), with a backup copy in the
@@ -1074,13 +1073,15 @@ async function loadFromSelectedGraph() {
   const json = await readSelectedGraph();
   if (json === null) throw new Error("Click a graph picture in the document first.");
   if (!json) throw new Error("This picture was not made by CD Fit (no saved data).");
-  linkedJson = json;
+  selectedJson = json;
   applyState(JSON.parse(json));
   setLinked(true);
 }
 
-/* Clicking a CD Fit graph in the document shows its data here automatically. */
-let linkedJson = null, selTimer = null, selBusy = false;
+/* Clicking a CD Fit graph in the document shows its data here automatically.
+   selectedJson is the graph that is currently selected, so edits made in the panel
+   survive while it stays selected and are replaced when a graph is clicked again. */
+let selectedJson = null, selTimer = null, selBusy = false;
 function setLinked(on) { $("linked").classList.toggle("show", !!on); }
 function showTab(name) {
   document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
@@ -1089,13 +1090,13 @@ function showTab(name) {
 function onSelectionChanged() {
   clearTimeout(selTimer);
   selTimer = setTimeout(async () => {
-    if (selBusy) return;
+    if (selBusy) { onSelectionChanged(); return; }
     selBusy = true;
     try {
       const json = await readSelectedGraph();
-      if (!json) { setLinked(false); return; }
-      if (json !== linkedJson) {
-        linkedJson = json;
+      if (!json) { selectedJson = null; setLinked(false); return; }
+      if (json !== selectedJson) {
+        selectedJson = json;
         applyState(JSON.parse(json));
         showTab("data");
         setStatus("Loaded the data saved in the selected graph.", "ok");
@@ -1140,7 +1141,7 @@ async function importTable() {
 
 /* ============================ Self-update ============================ */
 // GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
-const APP_VERSION = "1.1.1";
+const APP_VERSION = "1.1.2";
 (function checkForUpdate() {
   if (location.protocol !== "https:") return;
   fetch("version.json?t=" + Date.now(), { cache: "no-store" })
@@ -1159,7 +1160,7 @@ window.addEventListener("unhandledrejection", (e) => setStatus("Error: " + ((e.r
 
 /* ============================ Start ============================ */
 function markWord() {
-  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word · v" + APP_VERSION;
+  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word Â· v" + APP_VERSION;
   try { watchSelection(); onSelectionChanged(); } catch (e) { console.warn(e); }
 }
 function start(inWord) {
