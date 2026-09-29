@@ -1140,22 +1140,26 @@ async function importTable() {
 
 /* ============================ Self-update ============================ */
 // GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
-const APP_VERSION = "1.1.0";
+const APP_VERSION = "1.1.1";
 (function checkForUpdate() {
   if (location.protocol !== "https:") return;
   fetch("version.json?t=" + Date.now(), { cache: "no-store" })
     .then(r => (r.ok ? r.json() : null))
     .then(j => {
       if (!j || !j.version || j.version === APP_VERSION) return;
-      if (new URLSearchParams(location.search).get("v") === j.version) return; // already tried: avoid loops
-      location.replace(location.pathname + "?v=" + encodeURIComponent(j.version));
+      const q = new URLSearchParams(location.search);   // keep Office's _host_Info parameter
+      if (q.get("v") === j.version) return;               // already tried: avoid loops
+      q.set("v", j.version);
+      location.replace(location.pathname + "?" + q.toString());
     })
     .catch(() => {});
 })();
+window.addEventListener("error", (e) => setStatus("Error: " + (e.message || e.error), "err"));
+window.addEventListener("unhandledrejection", (e) => setStatus("Error: " + ((e.reason && e.reason.message) || e.reason), "err"));
 
 /* ============================ Start ============================ */
 function markWord() {
-  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word";
+  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word · v" + APP_VERSION;
   try { watchSelection(); onSelectionChanged(); } catch (e) { console.warn(e); }
 }
 function start(inWord) {
