@@ -31,6 +31,7 @@ One-time setup in desktop Word:
 
 If the URL changes, run `.\tools\Set-AddinUrl.ps1 -BaseUrl https://<your-user>.github.io/cdfit/src` and copy `manifest.hosted.xml` to `catalog\cdfit.xml`.
 Pushing to `main` updates the live add-in within about a minute, and nothing needs to be reinstalled.
+When you change the app, bump `APP_VERSION` in `src/taskpane.html` and `version` in `src/version.json` together. Word reloads the new version as soon as it sees the change, rather than waiting out GitHub's 10-minute cache.
 
 (The per-user registry sideload, `WEF\Developer`, doesn't work on this Word build. Word only honours it while a debugger is attached.)
 

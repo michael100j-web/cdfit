@@ -1138,6 +1138,21 @@ async function importTable() {
   S.dataText = text; S.series = []; $("data").value = text; refresh(true);
 }
 
+/* ============================ Self-update ============================ */
+// GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
+const APP_VERSION = "1.1.0";
+(function checkForUpdate() {
+  if (location.protocol !== "https:") return;
+  fetch("version.json?t=" + Date.now(), { cache: "no-store" })
+    .then(r => (r.ok ? r.json() : null))
+    .then(j => {
+      if (!j || !j.version || j.version === APP_VERSION) return;
+      if (new URLSearchParams(location.search).get("v") === j.version) return; // already tried: avoid loops
+      location.replace(location.pathname + "?v=" + encodeURIComponent(j.version));
+    })
+    .catch(() => {});
+})();
+
 /* ============================ Start ============================ */
 function markWord() {
   document.body.classList.add("in-word"); $("hostLabel").textContent = "Word";
