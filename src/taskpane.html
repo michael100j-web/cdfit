@@ -148,6 +148,7 @@
     <label class="f">Major tick<input type="number" id="xStep" step="any" placeholder="auto"></label>
     <label class="f">Minor ticks<input type="number" id="xMinor" min="0" max="9" step="1"></label>
   </div>
+  <div class="grid" style="margin-top:4px"><label class="f">Scale<select id="xScale"><option value="linear">Linear</option><option value="log">Logarithmic (log₁₀)</option></select></label></div>
   <h3>Y axis range</h3>
   <div class="grid4">
     <label class="f">Min<input type="number" id="yMin" step="any" placeholder="auto"></label>
@@ -155,6 +156,11 @@
     <label class="f">Major tick<input type="number" id="yStep" step="any" placeholder="auto"></label>
     <label class="f">Minor ticks<input type="number" id="yMinor" min="0" max="9" step="1"></label>
   </div>
+  <div class="grid" style="margin-top:4px"><label class="f">Scale<select id="yScale"><option value="linear">Linear</option><option value="log">Logarithmic (log₁₀)</option></select></label></div>
+  <div class="hint">On a log axis the major ticks sit on each power of ten, "Minor ticks" above 0 adds the 2–9 ticks, and points ≤ 0 are hidden.</div>
+
+  <h3>Data set styles</h3>
+  <div id="styleList" class="hint">No data yet.</div>
 
   <h3>Appearance</h3>
   <div class="grid">
@@ -162,7 +168,7 @@
     <label class="f">Plot height (px)<input type="number" id="plotH" min="100" max="1500" step="10"></label>
     <label class="f">Font size<input type="number" id="fontSize" min="6" max="40" step="1"></label>
     <label class="f">Font<select id="fontFamily"><option>Arial</option><option>Helvetica</option><option>Calibri</option><option>Times New Roman</option><option>Segoe UI</option></select></label>
-    <label class="f">Symbol size<input type="number" id="markerSize" min="0" max="20" step="0.5"></label>
+    <label class="f">Default symbol size<input type="number" id="markerSize" min="0" max="20" step="0.5"></label>
     <label class="f">Curve width<input type="number" id="lineW" min="0" max="10" step="0.25"></label>
     <label class="f">Axis width<input type="number" id="axisW" min="0.25" max="6" step="0.25"></label>
     <label class="f">Legend<select id="legend"><option value="tr">Inside, top right</option><option value="tl">Inside, top left</option><option value="br">Inside, bottom right</option><option value="bl">Inside, bottom left</option><option value="off">Hidden</option></select></label>
@@ -173,7 +179,7 @@
     <label class="c"><input type="checkbox" id="curveAxis"> Extend curve over whole X axis</label>
     <label class="c"><input type="checkbox" id="legendTm"> Show <i>T</i><sub>m</sub> in legend</label>
     <label class="c"><input type="checkbox" id="tmLine"> Mark <i>T</i><sub>m</sub> with dotted line</label>
-    <label class="c"><input type="checkbox" id="hollow"> Hollow symbols</label>
+    <label class="c"><input type="checkbox" id="hollow"> Hollow symbols by default</label>
   </div>
 
   <h3>Export</h3>
@@ -238,8 +244,8 @@ const TAG = "#CDFIT-STATE ";
 const DEFAULT_FMT = {
   xTitle: "*T* (°C)",
   yTitle: "*θ*_{225} (10^{3} deg cm^{2} dmol^{-1})",
-  xMin: "", xMax: "", xStep: "", xMinor: 1,
-  yMin: "", yMax: "", yStep: "", yMinor: 1,
+  xMin: "", xMax: "", xStep: "", xMinor: 1, xScale: "linear",
+  yMin: "", yMax: "", yStep: "", yMinor: 1, yScale: "linear",
   plotW: 430, plotH: 290, fontSize: 16, fontFamily: "Arial",
   markerSize: 5, lineW: 2, axisW: 1.25, legend: "tr",
   showPoints: true, showCurve: true, curveAxis: false, legendTm: true, tmLine: false, hollow: false,
@@ -668,6 +674,44 @@ function autoAxis(lo, hi, userMin, userMax, userStep) {
   if (!isFinite(uMin) && mn !== 0 && lo - mn < 0.04 * (mx - mn)) mn -= step;
   return { min: mn, max: mx, step };
 }
+// Axis with ticks and a value→fraction mapping; log axes put major ticks on decades.
+function makeAxis(vals, userMin, userMax, userStep, minorN, log) {
+  minorN = Math.max(0, Math.round(+minorN || 0));
+  if (!log) {
+    const a = autoAxis(Math.min(...vals), Math.max(...vals), userMin, userMax, userStep);
+    const ticks = [], minor = [], n = Math.round((a.max - a.min) / a.step);
+    if (n > 200 || n < 0) ticks.push(a.min, a.max);
+    else { for (let i = 0; i <= n + 1e-9; i++) ticks.push(a.min + i * a.step); if (ticks[ticks.length - 1] < a.max - a.step * 1e-6) ticks.push(a.max); }
+    for (let i = 0; i < ticks.length - 1; i++) for (let k = 1; k <= minorN; k++) minor.push(ticks[i] + (ticks[i + 1] - ticks[i]) * k / (minorN + 1));
+    return { ...a, log: false, ticks, minor, frac: (v) => (v - a.min) / (a.max - a.min), label: (v) => fmtTick(v, a.step) };
+  }
+  const pos = vals.filter(v => v > 0);
+  const uMin = parseFloat(userMin), uMax = parseFloat(userMax);
+  let mn = uMin > 0 ? uMin : pos.length ? Math.pow(10, Math.floor(Math.log10(Math.min(...pos)) + 1e-9)) : 1;
+  let mx = uMax > mn ? uMax : pos.length ? Math.pow(10, Math.ceil(Math.log10(Math.max(...pos)) - 1e-9)) : 10;
+  if (mx <= mn) mx = mn * 10;
+  const l0 = Math.log10(mn), l1 = Math.log10(mx), ticks = [], minor = [];
+  for (let k = Math.ceil(l0 - 1e-9); k <= Math.floor(l1 + 1e-9); k++) ticks.push(Math.pow(10, k));
+  if (ticks.length < 2) { ticks.length = 0; ticks.push(mn, mx); }
+  if (minorN > 0) for (let k = Math.floor(l0) - 1; k <= Math.ceil(l1); k++) for (let m = 2; m <= 9; m++) { const v = m * Math.pow(10, k); if (v > mn * (1 + 1e-9) && v < mx * (1 - 1e-9)) minor.push(v); }
+  return {
+    min: mn, max: mx, step: 1, log: true, ticks, minor,
+    frac: (v) => (v > 0 ? (Math.log10(v) - l0) / (l1 - l0) : NaN),
+    label: (v) => { const k = Math.round(Math.log10(v)); return Math.abs(v - Math.pow(10, k)) < v * 1e-9 && (k < -3 || k > 4) ? `10^{${k}}`.replace("-", "−") : fmtNum(v, 4); }
+  };
+}
+// Per-data-set style, falling back to the graph-wide defaults.
+const DASHES = { solid: "", dash: "7,4", dot: "1.5,3.5", dashdot: "7,3,1.5,3" };
+function styleOf(j) {
+  const c = S.series[j] || {}, size = parseFloat(c.size);
+  return {
+    color: c.color || COLORS[j % COLORS.length],
+    shape: c.shape || SHAPES[j % SHAPES.length],
+    hollow: c.fill ? c.fill === "hollow" : !!S.fmt.hollow,
+    size: isFinite(size) ? size : +S.fmt.markerSize,
+    line: c.line || "solid"
+  };
+}
 function markerPath(shape, x, y, r, color, hollow, sw, tip) {
   const m = markerShape(shape, x, y, r, color, hollow, sw);
   return tip ? `<g class="pt"><title>${esc(tip)}</title>${m}</g>` : m;
@@ -676,6 +720,9 @@ function markerShape(shape, x, y, r, color, hollow, sw) {
   const fill = hollow ? "#fff" : color, st = `fill="${fill}" stroke="${color}" stroke-width="${hollow ? sw : 0.5}"`;
   const f = (v) => v.toFixed(2);
   switch (shape) {
+    case "none": return "";
+    case "cross": { const a = r * 0.95, w = Math.max(1.2, r / 2.5); return `<path d="M${f(x - a)},${f(y - a)}L${f(x + a)},${f(y + a)}M${f(x - a)},${f(y + a)}L${f(x + a)},${f(y - a)}" stroke="${color}" stroke-width="${f(w)}" fill="none"/>`; }
+    case "plus": { const a = r * 1.1, w = Math.max(1.2, r / 2.5); return `<path d="M${f(x - a)},${f(y)}L${f(x + a)},${f(y)}M${f(x)},${f(y - a)}L${f(x)},${f(y + a)}" stroke="${color}" stroke-width="${f(w)}" fill="none"/>`; }
     case "square": { const a = r * 0.9; return `<rect x="${f(x - a)}" y="${f(y - a)}" width="${f(2 * a)}" height="${f(2 * a)}" ${st}/>`; }
     case "triangle": { const a = r * 1.2; return `<path d="M${f(x)},${f(y - a)}L${f(x + a * 0.95)},${f(y + a * 0.65)}L${f(x - a * 0.95)},${f(y + a * 0.65)}Z" ${st}/>`; }
     case "tridown": { const a = r * 1.2; return `<path d="M${f(x)},${f(y + a)}L${f(x + a * 0.95)},${f(y - a * 0.65)}L${f(x - a * 0.95)},${f(y - a * 0.65)}Z" ${st}/>`; }
@@ -688,20 +735,18 @@ function renderSVG(opts = {}) {
   const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55, aw = +F.axisW || 1.25;
   const vis = DATA ? DATA.series.filter(s => S.series[s.idx].visible) : [];
   const allX = vis.flatMap(s => s.xs.concat(s.xsEx)), allY = vis.flatMap(s => s.ys.concat(s.ysEx));
-  const xa = autoAxis(Math.min(...allX), Math.max(...allX), F.xMin, F.xMax, F.xStep);
-  const ya = autoAxis(Math.min(...allY), Math.max(...allY), F.yMin, F.yMax, F.yStep);
-  const ticks = (a) => { const out = []; const n = Math.round((a.max - a.min) / a.step); if (n > 200 || n < 0) return [a.min, a.max]; for (let i = 0; i <= n + 1e-9; i++) out.push(a.min + i * a.step); if (out[out.length - 1] < a.max - a.step * 1e-6) out.push(a.max); return out; };
-  const xt = ticks(xa), yt = ticks(ya);
-  measureCtx.font = `${fs}px ${fam}`;
-  const yLabW = Math.max(...yt.map(v => measureCtx.measureText(fmtTick(v, ya.step)).width));
-  const xLastW = measureCtx.measureText(fmtTick(xt[xt.length - 1], xa.step)).width;
+  const xa = makeAxis(allX, F.xMin, F.xMax, F.xStep, F.xMinor, F.xScale === "log");
+  const ya = makeAxis(allY, F.yMin, F.yMax, F.yStep, F.yMinor, F.yScale === "log");
+  const xt = xa.ticks, yt = ya.ticks;
+  const yLabW = Math.max(...yt.map(v => markupWidth(ya.label(v), fs, fam)));
+  const xLastW = markupWidth(xa.label(xt[xt.length - 1]), fs, fam);
   const ml = Math.ceil(tick + 5 + yLabW + 10 + tfs * 1.05 + 8);
   const mt = Math.ceil(fs * 0.7);
   const mr = Math.ceil(Math.max(12, xLastW / 2 + 6));
   const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
   const W = ml + pw + mr, H = mt + ph + mb;
-  const X = (v) => ml + (v - xa.min) / (xa.max - xa.min) * pw;
-  const Y = (v) => mt + ph - (v - ya.min) / (ya.max - ya.min) * ph;
+  const X = (v) => ml + xa.frac(v) * pw;
+  const Y = (v) => mt + ph - ya.frac(v) * ph;
   const f = (v) => v.toFixed(2);
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
   s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
@@ -711,30 +756,33 @@ function renderSVG(opts = {}) {
   if (F.tmLine) vis.forEach(ser => {
     const tm = paramValue(FITS[ser.idx], "Tm");
     if (tm && isFinite(tm.v) && tm.v >= xa.min && tm.v <= xa.max)
-      s += `<line x1="${f(X(tm.v))}" y1="${mt}" x2="${f(X(tm.v))}" y2="${mt + ph}" stroke="${S.series[ser.idx].color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.8"/>`;
+      s += `<line x1="${f(X(tm.v))}" y1="${mt}" x2="${f(X(tm.v))}" y2="${mt + ph}" stroke="${styleOf(ser.idx).color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.8"/>`;
   });
   // curves
   if (F.showCurve && MODEL) {
     s += `<g clip-path="url(#plotclip)" fill="none" stroke-width="${+F.lineW}" stroke-linejoin="round">`;
     vis.forEach(ser => {
-      const fit = FITS[ser.idx];
-      if (!fit || fit.error || !(+F.lineW > 0)) return;
+      const fit = FITS[ser.idx], st = styleOf(ser.idx);
+      if (!fit || fit.error || !(+F.lineW > 0) || st.line === "none") return;
       let x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs);
       if (F.curveAxis) { x0 = xa.min; x1 = xa.max; }
+      const logx = xa.log && x0 > 0;
       let d = "", pen = false;
       for (let i = 0; i <= 400; i++) {
-        const x = x0 + (x1 - x0) * i / 400, y = MODEL.fn(x, fit.p);
-        if (!isFinite(y)) { pen = false; continue; }
-        const yy = Math.max(-1e4, Math.min(1e4, Y(y)));
-        d += (pen ? "L" : "M") + f(X(x)) + "," + f(yy); pen = true;
+        const x = logx ? Math.pow(10, Math.log10(x0) + (Math.log10(x1) - Math.log10(x0)) * i / 400) : x0 + (x1 - x0) * i / 400;
+        const y = MODEL.fn(x, fit.p), py = Y(y);
+        if (!isFinite(y) || !isFinite(py)) { pen = false; continue; }
+        d += (pen ? "L" : "M") + f(X(x)) + "," + f(Math.max(-1e4, Math.min(1e4, py))); pen = true;
       }
-      s += `<path d="${d}" stroke="${S.series[ser.idx].color}"/>`;
+      const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"${st.line === "dot" ? ' stroke-linecap="round"' : ""}` : "";
+      s += `<path d="${d}" stroke="${st.color}"${dash}/>`;
     });
     s += `</g>`;
   }
   // points
-  if (F.showPoints && +F.markerSize > 0) vis.forEach(ser => {
-    const col = S.series[ser.idx].color, shape = SHAPES[ser.idx % SHAPES.length], r = +F.markerSize;
+  if (F.showPoints) vis.forEach(ser => {
+    const st = styleOf(ser.idx), col = st.color, shape = st.shape, r = st.size;
+    if (!(r > 0) || shape === "none") return;
     const draw = (xs, ys, faded) => {
       let g = `<g${faded ? ' opacity="0.3"' : ""}>`;
       for (let i = 0; i < xs.length; i++) {
@@ -745,7 +793,7 @@ function renderSVG(opts = {}) {
           tip = `${ser.name}${faded ? " (excluded from fit)" : ""}\nX = ${fmtNum(xs[i], 6)}\nY = ${fmtNum(ys[i], 6)}` +
                 (isFinite(yf) ? `\nFit = ${fmtNum(yf, 5)}\nResidual = ${fmtNum(ys[i] - yf, 3)}` : "");
         }
-        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, F.hollow, Math.max(1, r / 4), tip);
+        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, st.hollow, Math.max(1, r / 4), tip);
       }
       return g + "</g>";
     };
@@ -757,18 +805,13 @@ function renderSVG(opts = {}) {
   s += `<g stroke="#000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
   s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/>`;
   s += `<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${f(by)}"/>`;
-  const minorX = Math.max(0, Math.round(+F.xMinor || 0)), minorY = Math.max(0, Math.round(+F.yMinor || 0));
-  xt.forEach((v, i) => {
-    s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`;
-    if (i < xt.length - 1) for (let k = 1; k <= minorX; k++) { const vv = v + (xt[i + 1] - v) * k / (minorX + 1); s += `<line x1="${f(X(vv))}" y1="${f(by)}" x2="${f(X(vv))}" y2="${f(by + minorTick)}"/>`; }
-  });
-  yt.forEach((v, i) => {
-    s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`;
-    if (i < yt.length - 1) for (let k = 1; k <= minorY; k++) { const vv = v + (yt[i + 1] - v) * k / (minorY + 1); s += `<line x1="${ml}" y1="${f(Y(vv))}" x2="${f(ml - minorTick)}" y2="${f(Y(vv))}"/>`; }
-  });
+  xt.forEach(v => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`; });
+  xa.minor.forEach(v => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + minorTick)}"/>`; });
+  yt.forEach(v => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`; });
+  ya.minor.forEach(v => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - minorTick)}" y2="${f(Y(v))}"/>`; });
   s += `</g><g fill="#000">`;
-  xt.forEach(v => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${fmtTick(v, xa.step)}</text>`; });
-  yt.forEach(v => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${fmtTick(v, ya.step)}</text>`; });
+  xt.forEach(v => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${markupTspans(xa.label(v), fs)}</text>`; });
+  yt.forEach(v => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${markupTspans(ya.label(v), fs)}</text>`; });
   // titles
   s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.xTitle || "", tfs)}</text>`;
   const ty = mt + ph / 2, tx = ml - tick - 5 - yLabW - 10 - tfs * 0.25;
@@ -790,9 +833,12 @@ function renderSVG(opts = {}) {
     let ly = F.legend.startsWith("t") ? mt + pad : mt + ph - pad - lhTot;
     s += `<g font-size="${f(lfs)}">`;
     items.forEach((it, k) => {
-      const cy = ly + lh * k + lh / 2, col = S.series[it.ser.idx].color;
-      if (F.showCurve && FITS[it.ser.idx] && !FITS[it.ser.idx].error && +F.lineW > 0) s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${col}" stroke-width="${+F.lineW}"/>`;
-      if (F.showPoints) s += markerPath(SHAPES[it.ser.idx % SHAPES.length], lx + sym * 0.4, cy, r, col, F.hollow, Math.max(1, r / 4));
+      const cy = ly + lh * k + lh / 2, st = styleOf(it.ser.idx), col = st.color, rr = Math.min(st.size || r, lfs * 0.4);
+      if (F.showCurve && FITS[it.ser.idx] && !FITS[it.ser.idx].error && +F.lineW > 0 && st.line !== "none") {
+        const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"` : "";
+        s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${col}" stroke-width="${+F.lineW}"${dash}/>`;
+      }
+      if (F.showPoints && rr > 0) s += markerPath(st.shape, lx + sym * 0.4, cy, rr, col, st.hollow, Math.max(1, rr / 4));
       s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(it.label, lfs)}</text>`;
     });
     s += `</g>`;
@@ -827,8 +873,32 @@ function renderSeriesList() {
     const [cb, col, name] = row.querySelectorAll("input");
     cb.onchange = () => { cfg.visible = cb.checked; refresh(true); };
     col.oninput = () => { cfg.color = col.value; refresh(false); };
+    col.onchange = () => renderStyleList();
     name.onchange = () => { cfg.name = name.value.trim(); refresh(false); };
     el.appendChild(row);
+  });
+}
+const SHAPE_NAMES = { circle: "● Circle", square: "■ Square", triangle: "▲ Triangle", tridown: "▼ Triangle down", diamond: "◆ Diamond", cross: "✕ Cross", plus: "+ Plus", none: "No symbol" };
+const LINE_NAMES = { solid: "Solid", dash: "Dashed", dot: "Dotted", dashdot: "Dash-dot", none: "No curve" };
+function renderStyleList() {
+  const el = $("styleList");
+  if (!DATA || !DATA.series.length) { el.innerHTML = '<span class="hint">No data yet.</span>'; return; }
+  const opt = (map, sel) => Object.entries(map).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${v}</option>`).join("");
+  let h = `<table class="t"><tr><th></th><th>Data set</th><th>Symbol</th><th>Fill</th><th>Size</th><th>Curve</th></tr>`;
+  DATA.series.forEach((ser, j) => {
+    const st = styleOf(j), cfg = S.series[j];
+    h += `<tr data-j="${j}"><td><input type="color" data-k="color" value="${st.color}" title="Colour"></td>
+      <td>${esc(ser.name)}</td>
+      <td><select data-k="shape">${opt(SHAPE_NAMES, st.shape)}</select></td>
+      <td><select data-k="fill"><option value="filled"${st.hollow ? "" : " selected"}>Filled</option><option value="hollow"${st.hollow ? " selected" : ""}>Hollow</option></select></td>
+      <td><input type="number" data-k="size" min="0" max="20" step="0.5" value="${esc(cfg.size ?? "")}" placeholder="${+S.fmt.markerSize}" style="width:52px"></td>
+      <td><select data-k="line">${opt(LINE_NAMES, st.line)}</select></td></tr>`;
+  });
+  el.innerHTML = h + `</table><div class="hint">Blank size uses the default symbol size below.</div>`;
+  el.querySelectorAll("[data-k]").forEach(inp => {
+    const j = +inp.closest("tr").dataset.j, k = inp.dataset.k;
+    inp.oninput = () => { S.series[j][k] = inp.value; refresh(false); };
+    if (k === "color") inp.onchange = () => renderSeriesList();
   });
 }
 function renderParamTable() {
@@ -890,6 +960,7 @@ function refresh(refit) {
     catch (e) { MODEL = null; $("eqMsg").className = "msg err"; $("eqMsg").textContent = e.message; }
     runFits();
     renderSeriesList();
+    renderStyleList();
     renderParamTable();
     renderResults();
   }
@@ -922,7 +993,7 @@ function exampleData() {
 }
 
 /* ============================ Bind form ============================ */
-const FMT_FIELDS = ["xTitle", "yTitle", "xMin", "xMax", "xStep", "xMinor", "yMin", "yMax", "yStep", "yMinor", "plotW", "plotH", "fontSize", "fontFamily", "markerSize", "lineW", "axisW", "legend", "exportCm", "exportFmt"];
+const FMT_FIELDS = ["xTitle", "yTitle", "xScale", "yScale", "xMin", "xMax", "xStep", "xMinor", "yMin", "yMax", "yStep", "yMinor", "plotW", "plotH", "fontSize", "fontFamily", "markerSize", "lineW", "axisW", "legend", "exportCm", "exportFmt"];
 const FMT_CHECKS = ["showPoints", "showCurve", "curveAxis", "legendTm", "tmLine", "hollow"];
 function loadForm() {
   $("data").value = S.dataText; $("yMult").value = S.yMult; $("xFrom").value = S.xFrom; $("xTo").value = S.xTo;
@@ -950,7 +1021,11 @@ function initUI() {
   ["yMult", "xFrom", "xTo"].forEach(k => $(k).oninput = () => { S[k] = $(k).value; refreshSoon(true); });
   FMT_FIELDS.forEach(k => $(k).oninput = () => { S.fmt[k] = $(k).value; refreshSoon(false); });
   FMT_CHECKS.forEach(k => $(k).onchange = () => { S.fmt[k] = $(k).checked; refresh(false); });
-  $("btnResetFmt").onclick = () => { S.fmt = { ...DEFAULT_FMT }; loadForm(); refresh(false); };
+  $("btnResetFmt").onclick = () => {
+    S.fmt = { ...DEFAULT_FMT };
+    S.series.forEach(c => { delete c.shape; delete c.fill; delete c.size; delete c.line; });
+    loadForm(); refresh(false); renderStyleList();
+  };
 
   document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => {
     document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x === b));
@@ -1048,6 +1123,8 @@ function saveBackup(id, state) {
   return new Promise((res) => {
     try {
       Office.context.document.settings.set("cdfit:" + id, state);
+      // a document with CD Fit graphs reopens the panel when opened, so clicking a graph always shows its data
+      Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
       Office.context.document.settings.saveAsync(() => res());
     } catch (e) { res(); }
   });
@@ -1141,7 +1218,7 @@ async function importTable() {
 
 /* ============================ Self-update ============================ */
 // GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
-const APP_VERSION = "1.1.3";
+const APP_VERSION = "1.2.0";
 (function checkForUpdate() {
   if (location.protocol !== "https:") return;
   fetch("version.json?t=" + Date.now(), { cache: "no-store" })
