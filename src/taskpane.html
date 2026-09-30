@@ -1208,6 +1208,8 @@ function applyState(obj) {
   const mode = MODES[obj.mode] ? obj.mode : "melt";   // graphs saved before modes existed are CD melting
   S = { ...baseState(mode), ...obj, mode, fmt: { ...modeFmt(mode), ...(obj.fmt || {}) } };
   S.series = S.series || []; S.params = S.params || {};
+  // repair "Â°"/"Â±" left in data saved while version 1.1.2 had mis-encoded text
+  if (typeof S.dataText === "string" && /Â[°±]/.test(S.dataText)) S.dataText = S.dataText.replace(/Â([°±])/g, "$1");
   loadForm(); refresh(true);
 }
 function switchMode(mode) {
@@ -1296,8 +1298,9 @@ function summaryText() {
   const kind = { melt: "CD melting curve fitted", spec: "CD spectrum plotted", uv: "UV melting curve fitted" }[S.mode] || "Graph made";
   return `${kind} with CD Fit. ` + parts.join("; ");
 }
-// Plain tab-separated copy of the plotted data, for the picture's alt text: readable and
-// copyable into Excel in any Word, without CD Fit. Keeps the decimal separator the data were pasted with.
+// Plain copy of the plotted data for the picture's alt text: readable and copyable into Excel in
+// any Word, without CD Fit. Semicolon-separated because Word turns tabs in alt text into spaces
+// when it saves; keeps the decimal separator the data were pasted with.
 function dataTableText() {
   const p = parseData(S.dataText);
   const mult = isFinite(parseFloat(S.yMult)) ? parseFloat(S.yMult) : 1;
@@ -1305,9 +1308,11 @@ function dataTableText() {
   const num = (v) => { const s = String(Number(v.toPrecision(10))); return comma ? s.replace(".", ",") : s; };
   const cols = p.names.map((n, j) => j).filter(j => !S.series[j] || S.series[j].visible);
   const head = [p.xName || "X", ...cols.map(j => (S.series[j] && S.series[j].name) || p.names[j])];
-  const rows = p.rows.map(r => [num(r[0]), ...cols.map(j => (isFinite(r[j + 1]) ? num(r[j + 1] * mult) : ""))].join("\t"));
-  const note = mult !== 1 ? ` (Y values multiplied by ${mult})` : "";
-  return `DATA${note}: select the lines below, copy and paste into Excel\n` + [head.join("\t"), ...rows].join("\n");
+  const cell = (s) => String(s).replace(/;/g, ",");
+  const rows = p.rows.map(r => [num(r[0]), ...cols.map(j => (isFinite(r[j + 1]) ? num(r[j + 1] * mult) : ""))].join(";"));
+  const note = mult !== 1 ? `, Y values multiplied by ${mult}` : "";
+  return `DATA (columns separated by ;${note}). Copy the lines below into Excel, then Data > Text to Columns > Delimited > Semicolon.\n` +
+    [head.map(cell).join(";"), ...rows].join("\n");
 }
 async function insertGraph(replace) {
   if (!DATA || !DATA.series.length) throw new Error("No data to plot.");
@@ -1450,7 +1455,7 @@ async function importTable() {
 
 /* ============================ Self-update ============================ */
 // GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.4.2";
 (function checkForUpdate() {
   if (location.protocol !== "https:") return;
   fetch("version.json?t=" + Date.now(), { cache: "no-store" })
