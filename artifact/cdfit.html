@@ -2433,18 +2433,22 @@ const cdfitDerivatives = (function () {
     return out;
   }
 
+  // α always on one scale; a data point beyond it (where the fitted baselines nearly meet) is left out of the figure
+  const A_LO = -0.25, A_HI = 1.25, LEGEND_MAX = 8;
+  const outside = (c) => c.pts.filter((q) => !(q[1] >= A_LO && q[1] <= A_HI)).length;
+
   // Three panels on one temperature axis (panels.js draws them in the add-in's graph style)
   function draw(curves) {
-    const av = curves.flatMap((c) => c.a.concat(c.pts.map((q) => q[1]))), d1v = curves.flatMap((c) => c.d1);
-    const aFixed = Math.min(...av) >= -0.25 && Math.max(...av) <= 1.25;   // alpha on a fixed scale while the points fit it
+    const d1v = curves.flatMap((c) => c.d1);
     const dash = (c) => (c.mode === "uv" ? "7,4" : "");
     const line = (c, ys) => ({ xs: c.xs, ys, color: c.color, dash: dash(c) });
     const peaks = curves.filter((c) => !c.peak.edge).map((c) => ({ x: c.peak.x, color: c.color }));
     return cdfitPanels({
       xVals: curves.flatMap((c) => [c.xs[0], c.xs[c.xs.length - 1]]), xTitle: "*T* (°C)", legendAt: "tl",
-      legend: curves.map((c) => ({ label: cdfitMarkupEscape(c.name) + " · " + c.tag, color: c.color, dash: dash(c), hollow: c.mode === "uv" })),
+      // more than 8 curves would bury the panels under the legend: the table beside the figure has their colours
+      legend: curves.length > LEGEND_MAX ? [] : curves.map((c) => ({ label: cdfitMarkupEscape(c.name) + " · " + c.tag, color: c.color, dash: dash(c), hollow: c.mode === "uv" })),
       panels: [
-        { title: TITLES[0], height: 0.72, axis: aFixed ? { min: -0.25, max: 1.25, step: 0.25 } : null,
+        { title: TITLES[0], height: 0.72, axis: { min: A_LO, max: A_HI, step: 0.25 },
           lines: curves.map((c) => line(c, c.a)),
           points: curves.flatMap((c) => c.pts.map(([x, y]) => ({ x, y, color: c.color, hollow: c.mode === "uv", opacity: 0.75 }))) },
         // dα/dT from 0: rounding gives it tiny negatives
@@ -2488,6 +2492,10 @@ const cdfitDerivatives = (function () {
     if (!has.has("uv")) parts.push("Only CD curves so far: fit data under UV melting to compare both here.");
     if (!has.has("melt")) parts.push("Only UV curves so far: fit data under CD melting to compare both here.");
     if (curves.some((c) => c.example)) parts.push("These curves come from the example data.");
+    if (curves.length > LEGEND_MAX) parts.push(`With ${curves.length} curves the figure has no legend: the table gives each one's colour.`);
+    const off = curves.filter(outside).map((c) => `${c.name} · ${c.tag} (${outside(c)})`);
+    if (off.length) parts.push(`Points with α outside −0.25 to 1.25 are not drawn: ${off.join(", ")}. ` +
+      "Where the fitted baselines nearly meet, α is not well defined, so check those baselines.");
     note.textContent = parts.join(" ");
   }
 
