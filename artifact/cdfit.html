@@ -72,6 +72,7 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 button.small { padding: 3px 9px; font-size: 12.5px; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .word-only, #linked { display: none !important; }
+[hidden] { display: none !important; }   /* hidden wins over .row, .section and the other display rules */
 body.nofit #btnFit { display: none; }
 #status { font-size: 13px; color: var(--muted); min-height: 20px; font-variant-numeric: tabular-nums; }
 #status.err { color: var(--err); }

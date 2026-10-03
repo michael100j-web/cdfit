@@ -179,10 +179,11 @@ window.addEventListener("load", () => setTimeout(async () => {
                             temps.map((t) => frac(t, 33) * 4.3 * g(x, 225, 7.5) - 39 * g(x, 197.5, 6.5))).join("\t"));
     S.dataText = lines.join("\n"); S.series = []; refresh(true);
     q("#specGradient").click();
-    out.spectra = { fit: q("#specFit").textContent, visible: !q("#spectra").hidden, rows: rows("#specTable").length, figure: !!q("#specSvgBox svg"),
+    const shown = (sel) => getComputedStyle(q(sel)).display !== "none";   // what the viewer sees, not just the attribute
+    out.spectra = { fit: q("#specFit").textContent, visible: shown("#spectra") && !shown("#specConfirm"), rows: rows("#specTable").length, figure: !!q("#specSvgBox svg"),
       first: q("#spectra").nextElementSibling === q("#derivatives"), colours: new Set(S.series.map((s) => s.color)).size };
     q("#specToMelt").click();
-    out.melt = { mode: S.mode, status: q("#status").textContent, series: DATA.series.map((s) => s.name), spectraHidden: q("#spectra").hidden };
+    out.melt = { mode: S.mode, status: q("#status").textContent, series: DATA.series.map((s) => s.name), spectraHidden: !shown("#spectra"), derivShown: shown("#derivatives") };
     // spectrometer files (fabricated): Chirascan scans and spectra, a JASCO table of spectra, a spreadsheet scan
     const FILES = __FILES__, open = (names) => cdfitImport.load(names.map((n) => new File([FILES[n]], n)));
     const tms = () => DATA.series.map((s) => { const f = FITS[s.idx], t = f && !f.error ? paramValue(f, "Tm") : null; return t ? t.v : null; });
@@ -224,7 +225,7 @@ window.addEventListener("load", () => setTimeout(async () => {
           and r["imported"]["names"] == ["CMP1_20C", "CMP1_40C", "CMP1_60C"]
           and r["spectra"]["visible"] and r["spectra"]["rows"] == 22 and r["spectra"]["figure"] and r["spectra"]["first"]
           and r["spectra"]["colours"] == 22 and r["spectra"]["fit"].count("Tm = ") == 2 and r["melt"]["mode"] == "melt" and "Tm = " in r["melt"]["status"]
-          and r["melt"]["series"] == ["CMP-1", "CMP-2"] and r["melt"]["spectraHidden"])
+          and r["melt"]["series"] == ["CMP-1", "CMP-2"] and r["melt"]["spectraHidden"] and r["melt"]["derivShown"])
     # the page reads the spectrometer files into the same tables as the skill, and fits the same Tm
     for key, (mode, text, tms) in expect.items():
         got = r.get(key) or {}
