@@ -119,12 +119,18 @@ def chirascan(text):
     """A Chirascan (Applied Photophysics Pro-Data) CSV: "ProDataCSV", remarks such as "#Concentration: 200 uM", then
     after "Data:" one block per property (CircularDichroism, HV, Absorbance, ...). A spectrum block is "Wavelength,",
     the property name, then wavelength,value rows. A scan block is the property name, "Temperature,Wavelength", a
-    row of wavelengths under an empty first cell, then one row per temperature. Returns None for other files."""
+    row of wavelengths under an empty first cell, then one row per temperature. Saved through Excel, the cells are
+    tab-separated and "Wavelength," loses its comma. Returns None for other files."""
     lines = text.replace("\r", "").split("\n")
     first = next((l for l in lines if E.js_trim(l)), "")
     if E.js_trim(re.sub(r"[,;\s]+$", "", first)) != "ProDataCSV":
         return None
-    sep = ";" if re.search(r"^\s*-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?\s*;", text, re.M) else ","
+    if re.search(r"^[ ]*-?[0-9][^\n]*\t", text, re.M):
+        sep = "\t"
+    elif re.search(r"^\s*-?[0-9]+(?:\.[0-9]+)?(?:[eE][-+]?[0-9]+)?\s*;", text, re.M):
+        sep = ";"
+    else:
+        sep = ","
 
     def remark(key):
         k = "#" + key.lower() + ":"
@@ -151,9 +157,12 @@ def chirascan(text):
         rest = nums[1:]
         numeric = bool(rest) and any(_fin(v) for v in rest) and all(c == "" or _fin(rest[k]) for k, c in enumerate(cells[1:]))
         if numeric and (cells[0] == "" or _fin(nums[0])):
-            if cur is None:   # the text lines just above the numbers name the block
-                prop = ([l for l in labels if sep not in l] or [""])[-1]
-                axes = [a for a in (E.js_trim(c) for c in ([l for l in labels if sep in l] or [""])[-1].split(sep)) if a]
+            if cur is None:   # the text lines just above the numbers name the block: its property and its axes
+                plain = [l for l in labels if sep not in l]
+                prop = plain.pop() if plain else ""
+                with_sep = [l for l in labels if sep in l]
+                line_axes = with_sep[-1] if with_sep else plain[-1] if plain else ""
+                axes = [a for a in (E.js_trim(c) for c in line_axes.split(sep)) if a]
                 cur = {"property": prop, "rowAxis": axes[0] if axes else "", "colAxis": axes[1] if len(axes) > 1 else "",
                        "cols": None, "rows": []}
                 labels = []
@@ -290,28 +299,65 @@ def layout(p, only_first, lam):
                        for g in groups]}
 
 
+def _limits(c, b):
+    """Points measured with the detector at its voltage limit carry no signal (a long cell or a strong absorber in
+    the far UV): the cells of the HV block at 99.5% or more of its highest value, when that is at least 900 V."""
+    hv = next((x for x in c["blocks"] if re.match(r"^(HV|HT)$", x["property"], re.I) and x["rowAxis"] == b["rowAxis"]
+               and x["colAxis"] == b["colAxis"] and len(x["rows"]) == len(b["rows"])), None)
+    if not hv:
+        return None
+    top = max((v for r in hv["rows"] for v in r[1:] if _fin(v)), default=-math.inf)
+    if not top >= 900:
+        return None
+    return {"top": top, "at": lambda i, k: _fin(_at(hv["rows"][i], k + 1)) and _at(hv["rows"][i], k + 1) >= 0.995 * top}
+
+
+def _limit_note(name, n, top, where):
+    return f"{name}: {n} point{'s' if n > 1 else ''} {where} left out, measured with the detector at its limit (HV {E.fmt_num(top, 4)} V)."
+
+
 def _from_chirascan(c, stem, mode):
     want = re.compile(r"^absorbance$", re.I) if mode == "uv" else re.compile(r"circular\s*dichroism|^CD$", re.I)
     b = next((x for x in c["blocks"] if want.search(x["property"])), None)
     name = stem   # the file's name: the #Description remark is often left from an earlier sample
     base = {"file": stem, "name": name, "source": "Chirascan",
-            "unit": "mdeg" if b and re.search("circular", b["property"], re.I) else ""}
+            "unit": "mdeg" if b and re.search("circular", b["property"], re.I) else "", "notes": []}
     if not b:
         return {**base, "kind": "none", "why": "no absorbance in the file" if mode == "uv" else "no CD in the file"}
     row_wave, row_temp = bool(re.search("wave", b["rowAxis"], re.I)), bool(re.search("temp", b["rowAxis"], re.I))
     col_wave, col_temp = bool(re.search("wave", b["colAxis"], re.I)), bool(re.search("temp", b["colAxis"], re.I))
+    lim = _limits(c, b)
     if b["cols"] is None:
-        pts = [(r[0], _at(r, 1)) for r in b["rows"]]
+        pts, gone = [], []
+        for i, r in enumerate(b["rows"]):
+            if lim and lim["at"](i, 0):
+                gone.append(r[0])
+            else:
+                pts.append((r[0], _at(r, 1)))
+        if gone:
+            lo, hi = min(gone), max(gone)
+            unit = " nm" if row_wave else " °C" if row_temp else ""
+            where = f"at {E.fmt_num(lo, 4)}{unit}" if lo == hi else f"from {E.fmt_num(lo, 4)} to {E.fmt_num(hi, 4)}{unit}"
+            note = _limit_note(name, len(gone), lim["top"], where)
+            if row_wave and any(190 <= w <= 205 for w in gone):
+                note = note[:-1] + ", so the band near 197 nm is lost: λmin and Rpn are not reliable."
+            base["notes"].append(note)
         if row_wave:
             t = c["temperature"]
             return {**base, "kind": "spec", "spectra": [{"name": f"{name} ({E.js_str(t)} °C)" if _fin(t) else name, "pts": pts}]}
         return {**base, "kind": "melt" if row_temp else "table", "cols": [{"name": name, "pts": pts}]}
+    why = [[bool(lim and lim["at"](i, k)) for k in range(len(r) - 1)] for i, r in enumerate(b["rows"])]
+    rows = [[nan if why[i][k] else v for k, v in enumerate(r[1:])] for i, r in enumerate(b["rows"])]
     if row_temp and col_wave:
-        return {**base, "kind": "scan", "temps": [r[0] for r in b["rows"]],
-                "groups": [{"name": "", "waves": b["cols"], "rows": [r[1:] for r in b["rows"]]}]}
+        return {**base, "kind": "scan", "top": lim["top"] if lim else nan, "temps": [r[0] for r in b["rows"]],
+                "groups": [{"name": "", "waves": b["cols"], "rows": rows, "why": why}]}
+    cut = [w for r in why for w in r if w]
+    if cut:
+        base["notes"].append(_limit_note(name, len(cut), lim["top"], "of the table"))
 
     def across(label):
-        return [{"name": label(v), "pts": [(r[0], _at(r, k + 1)) for r in b["rows"]]} for k, v in enumerate(b["cols"])]
+        return [{"name": label(v), "pts": [(r[0], _at(rows[i], k)) for i, r in enumerate(b["rows"])]}
+                for k, v in enumerate(b["cols"])]
     if row_wave and col_temp:
         return {**base, "kind": "spec", "spectra": across(lambda t: f"{name} {E.js_str(t)} °C")}
     return {**base, "kind": "table", "cols": across(lambda v: f"{name} {E.js_str(v)}")}
@@ -345,7 +391,13 @@ def scan_melt(fd, lam, many):
         if not pk:
             misses.append(g)
             continue
-        cols.append({"name": name, "pts": [(t, value_of(g["rows"][i], pk)) for i, t in enumerate(fd["temps"])]})
+        pts = [(t, value_of(g["rows"][i], pk)) for i, t in enumerate(fd["temps"])]
+        cols.append({"name": name, "pts": pts})
+        if g.get("why"):   # the temperatures left out at this wavelength
+            ks = [pk["k"]] if "lo" not in pk else [pk["lo"], pk["hi"]]
+            n = sum(1 for w in g["why"] if any(k < len(w) and w[k] for k in ks))
+            if n:
+                notes.append(_limit_note(name, n, fd["top"], f"at {E.fmt_num(lam, 4)} nm"))
         if pk.get("only") and abs(g["waves"][0] - lam) > 1e-6:
             notes.append(f"{name}: measured at {E.fmt_num(g['waves'][0], 4)} nm only, so that is used.")
     why = f"no {E.fmt_num(lam, 4)} nm: measured at {wave_list(misses[0]['waves'])}" if misses else ""
@@ -397,6 +449,7 @@ def build(texts, mode, lam):
     def use(fd, cols):
         out["cols"].extend(cols)
         out["used"].append(fd)
+        out["notes"].extend(fd.get("notes") or [])
 
     for fd in fds:
         kind = fd["kind"]
@@ -448,6 +501,8 @@ def build(texts, mode, lam):
             out["used"].extend(sources)
             out["asIs"] = False
             out["picked"] = True
+            for fd in sources:
+                out["notes"].extend(fd.get("notes") or [])
         else:
             for fd in sources:
                 out["skipped"].append(f"{fd['file']} ({r['why']}: open {'them' if len(sources) > 1 else 'it'} in CD spectrum)")

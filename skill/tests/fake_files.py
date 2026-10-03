@@ -90,8 +90,9 @@ def chirascan_scan(description="CMP-A", tm=40.0, waves=(285, 265, 245, 225, 205)
     return CRLF.join(lines + _tail())
 
 
-def chirascan_spectrum(description="CMP-A", temperature="24.26", folded=1.0, lo=180, hi=300, seed=5):
-    """A CD spectrum: one block per property, each "Wavelength," then the property name."""
+def chirascan_spectrum(description="CMP-A", temperature="24.26", folded=1.0, lo=180, hi=300, seed=5, limit_below=None):
+    """A CD spectrum: one block per property, each "Wavelength," then the property name. With limit_below, the
+    detector sits at its voltage limit below that wavelength (a 10 mm cell) and the CD there is noise."""
     noise = Noise(seed)
     dims = [f"Wavelength,Wavelength: {lo}nm - {hi}nm,Step Size: 1nm,Bandwidth: 1nm"]
     props = ["CircularDichroism", "HV", "Absorbance"]
@@ -99,11 +100,30 @@ def chirascan_spectrum(description="CMP-A", temperature="24.26", folded=1.0, lo=
     for prop in props:
         lines += ["Wavelength,", prop]
         for x in range(hi, lo - 1, -1):
-            v = cd_spectrum(x, folded) * 0.3 + noise(0.05) if prop == "CircularDichroism" else \
-                (250 + (300 - x) * 2 + noise(0.5) if prop == "HV" else 0.1 + 0.02 * (300 - x) + noise(0.002))
+            limit = limit_below is not None and x < limit_below
+            if prop == "CircularDichroism":
+                v = noise(400) if limit else cd_spectrum(x, folded) * 0.3 + noise(0.05)
+            elif prop == "HV":
+                v = 999.985 if limit else 250 + (300 - x) * 2 + noise(0.5)
+            else:
+                v = 2.6 + noise(0.05) if limit else 0.1 + 0.008 * (300 - x) + noise(0.002)
             lines.append(f"{x},{v:.6g}")
         lines.append("")
     return CRLF.join(lines + _tail())
+
+
+def excel_rows(text):
+    """A CSV export as Excel keeps it after opening and saving: one cell per comma, numbers as numbers."""
+    rows = []
+    for line in text.replace("\r", "").split("\n"):
+        cells = []
+        for c in line.split(","):
+            try:
+                cells.append(float(c) if c.strip() else None)
+            except ValueError:
+                cells.append(c)
+        rows.append(cells)
+    return rows
 
 
 def jasco_matrix(title="CMP-B", tm=35.0, temps=(5, 15, 25, 30, 35, 40, 45, 55, 65), seed=3):

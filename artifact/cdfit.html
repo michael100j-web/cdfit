@@ -1912,6 +1912,32 @@ const cdfitImport = (function () {
     try { return new TextDecoder("windows-1250").decode(buf); } catch (e) { return utf8; }
   }
 
+  /* Excel files, read with SheetJS (loaded from cdnjs the first time one is opened): the first sheet, cells joined by
+     tabs, numbers as JavaScript writes them, empty rows dropped, as the skill reads them. */
+  let sheetJs = null;
+  function loadSheetJs() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    sheetJs = sheetJs || new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      s.onload = () => (window.XLSX ? resolve(window.XLSX) : reject(new Error("the Excel reader did not start")));
+      s.onerror = () => { sheetJs = null; reject(new Error("the Excel reader could not be loaded")); };
+      document.head.appendChild(s);
+    });
+    return sheetJs;
+  }
+  async function readXlsx(file) {
+    const X = await loadSheetJs();
+    const wb = X.read(new Uint8Array(await file.arrayBuffer()), { type: "array" });
+    const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, blankrows: false, defval: "" });
+    return rows.map((r) => {
+      const cells = r.map((v) => (v === null || v === undefined ? "" : typeof v === "number" ? String(v) : String(v).replace(/[\t\n]/g, " ")));
+      while (cells.length && cells[cells.length - 1] === "") cells.pop();
+      return cells.join("\t");
+    }).filter((l) => l.trim()).join("\n");
+  }
+  const isExcel = (name) => /\.(xlsx|xlsm|xls)$/i.test(name);
+
   // one line's cells, split the way parseData splits a whole table
   const cellsOf = (l) => (l.includes("\t") ? l.split("\t") : l.includes(";") ? l.split(";")
     : /\d,\d/.test(l) && /\s/.test(l.trim()) ? l.trim().split(/\s+/) : l.trim().split(/[\s,]+/));
@@ -1973,11 +1999,12 @@ const cdfitImport = (function () {
   /* Chirascan (Applied Photophysics Pro-Data) CSV: "ProDataCSV", remarks such as "#Concentration: 200 uM", then
      after "Data:" one block per property (CircularDichroism, HV, Absorbance, …). A spectrum block is "Wavelength,",
      the property name, then wavelength,value rows. A scan block is the property name, "Temperature,Wavelength", a
-     row of wavelengths under an empty first cell, then one row per temperature. */
+     row of wavelengths under an empty first cell, then one row per temperature. Saved through Excel, the cells are
+     tab-separated and "Wavelength," loses its comma. */
   function chirascan(text) {
     const lines = text.replace(/\r/g, "").split("\n");
     if ((lines.find((l) => l.trim()) || "").replace(/[,;\s]+$/, "").trim() !== "ProDataCSV") return null;
-    const sep = /^\s*-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*;/m.test(text) ? ";" : ",";
+    const sep = /^[ ]*-?\d[^\n]*\t/m.test(text) ? "\t" : /^\s*-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*;/m.test(text) ? ";" : ",";
     const remark = (key) => {
       const l = lines.find((s) => s.trim().toLowerCase().startsWith("#" + key.toLowerCase() + ":"));
       return l ? l.trim().slice(key.length + 2).replace(/[,;\s]+$/, "").trim() : "";
@@ -1993,9 +2020,9 @@ const cdfitImport = (function () {
       const nums = cells.map(parseNum), rest = nums.slice(1);
       const numeric = rest.length > 0 && rest.some((v) => isFinite(v)) && cells.slice(1).every((c, k) => c === "" || isFinite(rest[k]));
       if (numeric && (cells[0] === "" || isFinite(nums[0]))) {
-        if (!cur) {   // the text lines just above the numbers name the block
-          const prop = labels.filter((l) => !l.includes(sep)).pop() || "";
-          const axes = (labels.filter((l) => l.includes(sep)).pop() || "").split(sep).map((c) => c.trim()).filter(Boolean);
+        if (!cur) {   // the text lines just above the numbers name the block: its property and its axes
+          const plain = labels.filter((l) => !l.includes(sep)), prop = plain.pop() || "";
+          const axes = (labels.filter((l) => l.includes(sep)).pop() || plain.pop() || "").split(sep).map((c) => c.trim()).filter(Boolean);
           cur = { property: prop, rowAxis: axes[0] || "", colAxis: axes[1] || "", cols: null, rows: [] };
           labels = [];
         }
@@ -2097,21 +2124,45 @@ const cdfitImport = (function () {
     return { kind: "scan", temps: xs, groups: list.map((g) => ({ name: g.name, waves: g.waves, rows: p.rows.map((r) => g.js.map((j) => r[j + 1])) })) };
   }
 
+  /* Points measured with the detector at its voltage limit carry no signal (a long cell or a strong absorber in the
+     far UV): the cells of the HV block at 99.5% or more of its highest value, when that is at least 900 V. */
+  function limits(c, b) {
+    const hv = c.blocks.find((x) => /^(HV|HT)$/i.test(x.property) && x.rowAxis === b.rowAxis && x.colAxis === b.colAxis && x.rows.length === b.rows.length);
+    if (!hv) return null;
+    let top = -Infinity;
+    for (const r of hv.rows) for (let k = 1; k < r.length; k++) if (isFinite(r[k])) top = Math.max(top, r[k]);
+    return top >= 900 ? { top, at: (i, k) => hv.rows[i][k + 1] >= 0.995 * top } : null;
+  }
+  const limitNote = (name, n, top, where) =>
+    `${name}: ${n} point${n > 1 ? "s" : ""} ${where} left out, measured with the detector at its limit (HV ${fmtNum(top, 4)} V).`;
+
   function fromChirascan(c, stem, mode) {
     const want = mode === "uv" ? /^absorbance$/i : /circular\s*dichroism|^CD$/i;
     const b = c.blocks.find((x) => want.test(x.property));
     const name = stem;   // the file's name: the #Description remark is often left from an earlier sample
-    const base = { file: stem, name, source: "Chirascan", unit: b && /circular/i.test(b.property) ? "mdeg" : "" };
+    const base = { file: stem, name, source: "Chirascan", unit: b && /circular/i.test(b.property) ? "mdeg" : "", notes: [] };
     if (!b) return { ...base, kind: "none", why: mode === "uv" ? "no absorbance in the file" : "no CD in the file" };
     const rowWave = /wave/i.test(b.rowAxis), rowTemp = /temp/i.test(b.rowAxis);
     const colWave = /wave/i.test(b.colAxis), colTemp = /temp/i.test(b.colAxis);
+    const lim = limits(c, b);
     if (!b.cols) {
-      const pts = b.rows.map((r) => [r[0], r[1]]);
+      const pts = [], gone = [];
+      b.rows.forEach((r, i) => { if (lim && lim.at(i, 0)) gone.push(r[0]); else pts.push([r[0], r[1]]); });
+      if (gone.length) {
+        const lo = Math.min(...gone), hi = Math.max(...gone), unit = rowWave ? " nm" : rowTemp ? " °C" : "";
+        let note = limitNote(name, gone.length, lim.top, lo === hi ? `at ${fmtNum(lo, 4)}${unit}` : `from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)}${unit}`);
+        if (rowWave && gone.some((w) => w >= 190 && w <= 205)) note = note.slice(0, -1) + ", so the band near 197 nm is lost: λmin and Rpn are not reliable.";
+        base.notes.push(note);
+      }
       if (rowWave) return { ...base, kind: "spec", spectra: [{ name: isFinite(c.temperature) ? `${name} (${c.temperature} °C)` : name, pts }] };
       return { ...base, kind: rowTemp ? "melt" : "table", cols: [{ name, pts }] };
     }
-    if (rowTemp && colWave) return { ...base, kind: "scan", temps: b.rows.map((r) => r[0]), groups: [{ name: "", waves: b.cols, rows: b.rows.map((r) => r.slice(1)) }] };
-    const across = (label) => b.cols.map((v, k) => ({ name: label(v), pts: b.rows.map((r) => [r[0], r[k + 1]]) }));
+    const why = b.rows.map((r, i) => r.slice(1).map((_, k) => !!(lim && lim.at(i, k))));
+    const rows = b.rows.map((r, i) => r.slice(1).map((v, k) => (why[i][k] ? NaN : v)));
+    if (rowTemp && colWave) return { ...base, kind: "scan", top: lim ? lim.top : NaN, temps: b.rows.map((r) => r[0]), groups: [{ name: "", waves: b.cols, rows, why }] };
+    const cut = why.flat().filter(Boolean);
+    if (cut.length) base.notes.push(limitNote(name, cut.length, lim.top, "of the table"));
+    const across = (label) => b.cols.map((v, k) => ({ name: label(v), pts: b.rows.map((r, i) => [r[0], rows[i][k]]) }));
     if (rowWave && colTemp) return { ...base, kind: "spec", spectra: across((t) => `${name} ${t} °C`) };
     return { ...base, kind: "table", cols: across((v) => `${name} ${v}`) };
   }
@@ -2133,7 +2184,12 @@ const cdfitImport = (function () {
     for (const g of fd.groups) {
       const pk = pickWave(g.waves, lam), name = groupName(fd, g, many);
       if (!pk) { misses.push(g); continue; }
-      cols.push({ name, pts: fd.temps.map((t, i) => [t, valueOf(g.rows[i], pk)]) });
+      const pts = fd.temps.map((t, i) => [t, valueOf(g.rows[i], pk)]);
+      cols.push({ name, pts });
+      if (g.why) {   // the temperatures left out at this wavelength
+        const ks = pk.lo === undefined ? [pk.k] : [pk.lo, pk.hi], n = g.why.filter((w) => ks.some((k) => w[k])).length;
+        if (n) notes.push(limitNote(name, n, fd.top, `at ${fmtNum(lam, 4)} nm`));
+      }
       if (pk.only && Math.abs(g.waves[0] - lam) > 1e-6) notes.push(`${name}: measured at ${fmtNum(g.waves[0], 4)} nm only, so that is used.`);
     }
     const why = misses.length ? `no ${fmtNum(lam, 4)} nm: measured at ${waveList(misses[0].waves)}` : "";
@@ -2174,7 +2230,8 @@ const cdfitImport = (function () {
       const fd = describe(t.raw, t.stem, mode);
       if (fd) fds.push(fd); else out.skipped.push(`${t.stem} (no numbers)`);
     }
-    const many = fds.length > 1, spectra = [], use = (fd, cols) => { out.cols.push(...cols); out.used.push(fd); };
+    const many = fds.length > 1, spectra = [];
+    const use = (fd, cols) => { out.cols.push(...cols); out.used.push(fd); out.notes.push(...(fd.notes || [])); };
     for (const fd of fds) {
       if (fd.kind === "none") { out.skipped.push(`${fd.file} (${fd.why})`); continue; }
       if (fd.kind === "table") { use(fd, fd.cols || plainCols(fd, many)); if (fd.source) out.asIs = false; continue; }
@@ -2202,7 +2259,10 @@ const cdfitImport = (function () {
     }
     if (spectra.length) {
       const r = spectraMelt(spectra, lam), from = [...new Set(spectra.map((s) => s.fd))];
-      if (r.cols.length) { out.cols.push(...r.cols); out.used.push(...from); out.asIs = false; out.picked = true; }
+      if (r.cols.length) {
+        out.cols.push(...r.cols); out.used.push(...from); out.asIs = false; out.picked = true;
+        for (const fd of from) out.notes.push(...(fd.notes || []));
+      }
       else for (const fd of from) out.skipped.push(`${fd.file} (${r.why}: open ${from.length > 1 ? "them" : "it"} in CD spectrum)`);
     }
     if (fds.length === 1 && out.used.length === 1 && out.asIs && !fds[0].source) out.single = fds[0].raw;
@@ -2265,7 +2325,8 @@ const cdfitImport = (function () {
     setStatus(`Reading ${files.length} file${files.length > 1 ? "s" : ""}…`);
     const texts = [], unread = [];
     for (const f of files) {
-      try { texts.push({ stem: f.name.replace(/\.[^.]+$/, ""), raw: await readText(f) }); } catch (e) { unread.push(f.name); }
+      try { texts.push({ stem: f.name.replace(/\.[^.]+$/, ""), raw: isExcel(f.name) ? await readXlsx(f) : await readText(f) }); }
+      catch (e) { unread.push(`${f.name} (${(e && e.message) || "could not be read"})`); }
     }
     const lam = lambda(), from = S.mode;
     // the current mode if any file suits it, otherwise the mode the files are for
@@ -2275,7 +2336,7 @@ const cdfitImport = (function () {
       if (p.cols.length) { plan = p; break; }
       plan = plan || p;
     }
-    const skipped = [...unread.map((n) => `${n} (could not be read)`), ...plan.skipped];
+    const skipped = [...unread, ...plan.skipped];
     if (!plan.cols.length) { setStatus(`Nothing to load: ${skipped.join("; ") || "no numbers found"}.`, "err"); return; }
     if (plan.mode !== from) switchMode(plan.mode);
     const xName = plan.asIs ? xNameFor(plan.used[0].p ? plan.used[0].p.xName : "", plan.mode) : plan.mode === "spec" ? "λ (nm)" : "T (°C)";
@@ -2310,12 +2371,12 @@ const cdfitImport = (function () {
   // the Data tab's file button takes several files
   const input = $("file");
   input.multiple = true;
-  input.accept = ".csv,.txt,.tsv,.dat,.asc,.prn,text/plain";
+  input.accept = ".csv,.txt,.tsv,.dat,.asc,.prn,.xlsx,.xlsm,.xls,text/plain";
   input.onchange = async () => { const fs = [...input.files]; input.value = ""; await load(fs); };
   $("btnFile").textContent = "Open files…";
   const tip = document.createElement("div");
   tip.className = "hint";
-  tip.textContent = "Open or drop several files at once: each becomes a column, matched by X. Chirascan and JASCO exports work. "
+  tip.textContent = "Open or drop several files at once: each becomes a column, matched by X. Chirascan, JASCO and Excel files work. "
     + "From a scan at several wavelengths, or spectra named with their temperatures, CD and UV melting take the value at this wavelength:";
   const lamRow = document.createElement("div");
   lamRow.className = "row imp-lambda";

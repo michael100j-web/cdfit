@@ -96,7 +96,10 @@ line, or null.
   above its numbers: a line without a comma is the property, a line with one gives the axes (`Temperature,Wavelength`:
   temperatures down, wavelengths across in a row under an empty cell; `Wavelength,`: a spectrum). CD modes take
   `CircularDichroism`, UV melting takes `Absorbance`. A spectrum gets the `#Temperature` remark in its name,
-  "file (24.26 °C)". Reading stops at `History:`.
+  "file (24.26 °C)". Reading stops at `History:`. Saved through Excel, the cells are tab-separated and the
+  `Wavelength,` line loses its comma: a text line just before the property line is then read as the axes. Points
+  where the HV block (same axes) is at 99.5% or more of its highest value, when that is at least 900 V, are left
+  out (the detector at its voltage limit) and a note gives how many and where.
 - **What a table holds.** Spectra: X is a wavelength axis (strictly monotonic, 150–1100 nm, and either named
   as a wavelength or ≥ 5 points starting below 250 nm at most 10 nm apart, not under a temperature or time
   header). A scan: every column name except detector-voltage ones (HT, HV, Voltage) gives a wavelength ("225 nm",

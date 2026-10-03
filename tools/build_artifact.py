@@ -11,6 +11,7 @@ artifact/src: saving the graph through the viewer (`downloads`), an optional "As
 Publish with the Artifact tool: icon "chart", capabilities {"downloads": true, "sample": {}}.
 """
 import argparse
+import base64
 import html
 import json
 import re
@@ -197,13 +198,16 @@ window.addEventListener("load", () => setTimeout(async () => {
     await pause(600);   // the input waits for typing to stop, then reads the files again
     for (let i = 0; i < 100 && /^Reading/.test(q("#status").textContent); i++) await pause(100);
     out.at224 = grab(); out.specLambda = q("#specLambda").value;
+    switchMode("melt"); await open(["long_cell.csv"]); out.chLimit = grab();
+    const xb = Uint8Array.from(atob(__XLSX__), (ch) => ch.charCodeAt(0));   // the same spectrum saved through Excel
+    switchMode("melt"); await cdfitImport.load([new File([xb], "long_cell.xlsx")]); out.chXlsx = grab();
   } catch (e) { out.flowError = String((e && e.message) || e); }
   out.error = window.__err || null;
   const pre = document.createElement("pre"); pre.id = "probe"; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
 }, 300));
 </script>"""
-    files, expect = spectrometer_files()
-    probe = probe.replace("__FILES__", json.dumps(files))
+    files, xlsx, expect = spectrometer_files()
+    probe = probe.replace("__FILES__", json.dumps(files)).replace("__XLSX__", json.dumps(base64.b64encode(xlsx).decode()))
     doc = ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,'
            'initial-scale=1,viewport-fit=cover"></head><body>' + page + probe + "</body></html>")
     tmp = Path(tempfile.mkdtemp(prefix="cdfit-artifact-"))
@@ -241,7 +245,9 @@ window.addEventListener("load", () => setTimeout(async () => {
     ok = (ok and "Chirascan scan at 205–285 nm every 20 nm, 121 temperatures" in r["chMelt"]["status"]
           and r["chMelt"]["yTitle"] == "*θ*_{225} (mdeg)" and r["chUv"]["yTitle"] == "*A*_{225}"
           and "absorbance at 225 nm" in r["chUv"]["status"] and r["chSpec"]["status"].startswith("These files hold spectra")
-          and "Skipped: CMPA_Tm (no 224 nm" in r["at224"]["status"] and r["specLambda"] == "224")
+          and "Skipped: CMPA_Tm (no 224 nm" in r["at224"]["status"] and r["specLambda"] == "224"
+          and "21 points from 180 to 200 nm left out, measured with the detector at its limit" in r["chLimit"]["status"]
+          and r["chXlsx"]["mode"] == "spec")
     if not ok:
         sys.exit("--check failed: see the values above.")
 
@@ -252,22 +258,37 @@ def spectrometer_files():
     import fake_files as FF
     import cdfit_engine as E
     import cdfit_files as CF
+    import cdfit
+    import openpyxl
     files = {"CMPA_Tm.csv": FF.chirascan_scan(), "CMPA_CD.csv": FF.chirascan_spectrum(),
              "CMPA_CD_hot.csv": FF.chirascan_spectrum(temperature="80.1", folded=0.0, seed=9),
-             "cmpB_jasco.txt": FF.jasco_matrix(), "scan_sheet.csv": FF.plain_scan()}
+             "cmpB_jasco.txt": FF.jasco_matrix(), "scan_sheet.csv": FF.plain_scan(),
+             "long_cell.csv": FF.chirascan_spectrum(temperature="22.77", limit_below=201)}
+    wb = openpyxl.Workbook()
+    for row in FF.excel_rows(files["long_cell.csv"]):
+        wb.active.append(row)
+    tmp = Path(tempfile.mkdtemp(prefix="cdfit-xlsx-"))
+    try:
+        wb.save(tmp / "long_cell.xlsx")
+        xlsx = (tmp / "long_cell.xlsx").read_bytes()
+        xlsx_text = cdfit.read_xlsx(str(tmp / "long_cell.xlsx"))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     mixed = ["CMPA_Tm.csv", "cmpB_jasco.txt", "scan_sheet.csv"]   # the order the page sorts them in
     expect = {}
     for key, names, mode, lam in [("chMelt", ["CMPA_Tm.csv"], "melt", 225), ("chUv", ["CMPA_Tm.csv"], "uv", 225),
                                   ("chSpec", ["CMPA_CD.csv", "CMPA_CD_hot.csv"], "melt", 225),
-                                  ("mixed", mixed, "melt", 225), ("at224", mixed, "melt", 224)]:
-        p = CF.plan([(Path(n).stem, files[n]) for n in names], mode, lam)
+                                  ("mixed", mixed, "melt", 225), ("at224", mixed, "melt", 224),
+                                  ("chLimit", ["long_cell.csv"], "melt", 225), ("chXlsx", ["long_cell.xlsx"], "melt", 225)]:
+        source = lambda n: xlsx_text if n.endswith(".xlsx") else files[n]
+        p = CF.plan([(Path(n).stem, source(n)) for n in names], mode, lam)
         text = CF.table_text(p)
         tms = []
         if p["mode"] != "spec":
             s = E.Session({**E.base_state(p["mode"]), "dataText": text})
             tms = [(s.tm(ser) or {}).get("v") for ser in s.data["series"]]
         expect[key] = (p["mode"], text, tms)
-    return files, expect
+    return files, xlsx, expect
 
 
 def main():

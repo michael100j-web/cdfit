@@ -34,7 +34,10 @@ Needs Python 3 with numpy and matplotlib (openpyxl for .xlsx). Use `py` on Windo
 - **Chirascan** CSV (starts with `ProDataCSV`): the script takes the CircularDichroism block (the Absorbance block
   with `--mode uv`) and ignores HV, Voltage, Count, SE and Temperature. A melting scan recorded at one or more
   wavelengths gives the signal at `--wavelength` (default 225 nm) against temperature. A spectrum file is read as a
-  spectrum, named with the temperature in its remarks. Curves are named after the files.
+  spectrum, named with the temperature in its remarks. Curves are named after the files. A Chirascan CSV that was
+  opened and saved in Excel (.xlsx) reads the same. Points measured with the detector at its voltage limit (HV at
+  its ceiling, e.g. a 10 mm cell in the far UV) are left out, with a note; pass that note on, since it means the
+  band near 197 nm, and so Rpn, cannot be trusted.
 - **JASCO** exports: the CD channel; an export of spectra at several temperatures is read as one spectrum per
   temperature.
 - **Spectra named with their temperatures** (several files, or one table with a column per temperature) give θ at

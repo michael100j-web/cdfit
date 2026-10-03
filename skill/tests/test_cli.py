@@ -233,6 +233,25 @@ class CLI(unittest.TestCase):
         self.assertIn("CD at 224 nm against temperature (scan at 222, 225, 230 nm, 61 temperatures)", out)
         self.assertAlmostEqual(tm(out), 45, delta=0.5)
 
+    def test_chirascan_saved_through_excel_and_detector_limit(self):
+        """A Chirascan spectrum from a 10 mm cell, opened and saved in Excel: read as a spectrum, and the points
+        measured with the detector at its voltage limit left out, with a note."""
+        try:
+            import openpyxl
+        except ImportError:
+            self.skipTest("openpyxl not installed")
+        import fake_files as FF
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        for row in FF.excel_rows(FF.chirascan_spectrum(temperature="22.77", limit_below=201)):
+            ws.append(row)
+        wb.save(self.path("long_cell.xlsx"))
+        code, out, _ = run("fit", self.path("long_cell.xlsx"), "--out", self.path("x2"))
+        self.assertEqual(code, 0)
+        self.assertIn("long_cell: 21 points from 180 to 200 nm left out, measured with the detector at its limit "
+                      "(HV 1000 V), so the band near 197 nm is lost: λmin and Rpn are not reliable.", out)
+        self.assertIn("long_cell (22.77 °C): max 225 nm", out)
+
     def test_file_readers(self):
         import cdfit_files as F
         self.assertIsNone(F.chirascan(E.example_data("melt")))
