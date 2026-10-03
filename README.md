@@ -17,7 +17,7 @@ The same fitting also runs inside Claude as a skill (see [Use CD Fit in Claude](
 | `skill/cdfit/` | The Claude skill: `SKILL.md` and a Python port of the fitting, graph and Word round trip |
 | `skill/tests/` | Checks the port against the add-in itself (synthetic data only) |
 | `tools/install_skill.py` | Installs the skill for Claude Code and builds `dist/cdfit-skill.zip` for claude.ai |
-| `artifact/cdfit.html`, `tools/build_artifact.py` | The add-in as a page in Claude (a claude.ai Artifact), built from `src/taskpane.html` |
+| `artifact/cdfit.html`, `artifact/src/`, `tools/build_artifact.py` | The add-in as a page in Claude (a claude.ai Artifact), built from `src/taskpane.html` plus the page's own parts |
 
 ## Use CD Fit in Claude
 
@@ -31,8 +31,10 @@ CD Fit graphs that are already in a Word document.
 - **claude.ai, for yourself**: upload `dist/cdfit-skill.zip` under **Customize → Skills → + → Create skill →
   Upload a skill**. Code execution must be on.
 - **As a page in Claude**: `artifact/cdfit.html` is the add-in's own script in a full-page layout, published as a
-  claude.ai Artifact. It adds Save PNG/SVG (the viewer asks before saving) and an optional *Ask Claude about this
-  fit*, which sends the data and results to Claude on the viewer's own usage. Rebuild it with
+  claude.ai Artifact. It adds Save PNG/SVG (the viewer asks before saving), an optional *Ask Claude about this
+  fit*, which sends the data and results to Claude on the viewer's own usage, and, below the app, the 1st and
+  2nd derivatives of the CD and UV fits in one figure (as fraction unfolded, with the peak temperatures in a
+  table). Its own code is in `artifact/src`. Rebuild it with
   `py tools/build_artifact.py --check` and republish it with the Artifact tool (icon `chart`, capabilities
   `downloads` and `sample`).
 - **claude.ai, for the whole lab** (Team plan, Owner): upload the same zip under **Organization settings →
