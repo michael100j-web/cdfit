@@ -158,6 +158,14 @@ class CLI(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("Equation error: Line 1: expression ends unexpectedly", out)
 
+    def test_scripts_parse_on_older_python(self):
+        """claude.ai's sandbox runs an older Python than this machine may: no 3.12-only syntax."""
+        import ast
+        folder = os.path.join(HERE, "..", "cdfit", "scripts")
+        for name in os.listdir(folder):
+            if name.endswith(".py"):
+                ast.parse(read(os.path.join(folder, name)), filename=name, feature_version=(3, 8))
+
     def test_skill_frontmatter(self):
         text = read(os.path.join(HERE, "..", "cdfit", "SKILL.md"))
         self.assertTrue(text.startswith("---\nname: cdfit\ndescription: "))
