@@ -80,7 +80,7 @@ _TEXT_WIDTH = 11906 - 2 * 1417   # twips
 
 
 def _picture(n, rid, cx, cy, title, descr):
-    return (f'<w:p><w:pPr><w:spacing w:after="120"/></w:pPr><w:r><w:drawing>'
+    return (f'<w:p><w:pPr><w:keepNext/><w:spacing w:after="120"/></w:pPr><w:r><w:drawing>'
             f'<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{cx}" cy="{cy}"/>'
             f'<wp:effectExtent l="0" t="0" r="0" b="0"/>'
             f'<wp:docPr id="{n}" name="Picture {n}" descr="{_esc(descr, True)}" title="{_esc(title, True)}"/>'
@@ -94,7 +94,9 @@ def _picture(n, rid, cx, cy, title, descr):
 
 
 def _para(text, style=None, bold=False):
-    ppr = f'<w:pPr><w:pStyle w:val="{style}"/></w:pPr>' if style else ""
+    """A heading or caption, kept on the same page as what follows it."""
+    pstyle = f'<w:pStyle w:val="{style}"/>' if style else ""
+    ppr = f"<w:pPr>{pstyle}<w:keepNext/></w:pPr>"
     rpr = "<w:rPr><w:b/></w:rPr>" if bold else ""
     return f'<w:p>{ppr}<w:r>{rpr}<w:t xml:space="preserve">{_esc(text)}</w:t></w:r></w:p>'
 
