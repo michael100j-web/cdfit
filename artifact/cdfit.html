@@ -2625,7 +2625,7 @@ const cdfitSpectra = (function () {
     const lam = lambda(), rows = [];
     DATA.series.forEach((ser, j) => {
       if (!S.series[j] || !S.series[j].visible || !ser.xs.length) return;
-      rows.push({ j, name: ser.name, label: labelOf(ser.name), b: bands(ser), at: valueAt(ser, lam) });
+      rows.push({ j, name: ser.name, label: labelOf(ser.name), b: bands(ser), at: valueAt(ser, lam), lo: Math.min(...ser.xs) });
     });
     const labelled = rows.filter((r) => r.label && isFinite(r.label.value));
     const celsius = labelled.length && labelled.every((r) => r.label.celsius);
@@ -2693,12 +2693,17 @@ const cdfitSpectra = (function () {
     return `θ at ${fmtNum(v.lam, 4)} nm against temperature, fitted with ${v.fitted.model}: ${parts.join("; ")}.`;
   }
 
+  const edgeMin = (r) => r.b.xMin <= r.lo + 1e-9;
   function tableRows(v) {
     const head = ["Spectrum", v.celsius ? "T (°C)" : "Number in name", "λ max (nm)", "Value at max", "λ min (nm)",
       "Value at min", "Crossover (nm)", "Rpn", `Value at ${fmtNum(v.lam, 4)} nm`];
-    const body = v.rows.map((r) => [r.name, r.label ? fmtNum(r.label.value, 4) : "—", r.b.hasPos ? fmtNum(r.b.xMax, 5) : "—",
-      fmtNum(r.b.yMax, 4), fmtNum(r.b.xMin, 5), fmtNum(r.b.yMin, 4), isFinite(r.b.cross) ? r.b.cross.toFixed(1) : "—",
-      isFinite(r.b.rpn) ? r.b.rpn.toFixed(3) : "—", fmtNum(r.at, 4)]);
+    // a minimum at a spectrum's lowest wavelength is not the band near 197 nm, so λmin and Rpn stay blank
+    const body = v.rows.map((r) => {
+      const edge = edgeMin(r);
+      return [r.name, r.label ? fmtNum(r.label.value, 4) : "—", r.b.hasPos ? fmtNum(r.b.xMax, 5) : "—",
+        fmtNum(r.b.yMax, 4), edge ? "—" : fmtNum(r.b.xMin, 5), edge ? "—" : fmtNum(r.b.yMin, 4), isFinite(r.b.cross) ? r.b.cross.toFixed(1) : "—",
+        !edge && isFinite(r.b.rpn) ? r.b.rpn.toFixed(3) : "—", fmtNum(r.at, 4)];
+    });
     return [head, ...body];
   }
 
@@ -2721,6 +2726,7 @@ const cdfitSpectra = (function () {
     const parts = [`${view.rows.length} spectr${view.rows.length === 1 ? "um" : "a"}.`];
     if (!view.trend) parts.push("Name the spectra with their temperature (for example “CMP-1 20 °C”, or files named that way) to see θ and Rpn against temperature.");
     else if (!view.labelled) parts.push("Spectra without a number in their name are left out of the figure.");
+    if (view.rows.some(edgeMin)) parts.push("λmin and Rpn are blank where a spectrum's lowest point is its minimum: the band near 197 nm is not in those data.");
     if (view.rows.length > 10) parts.push("With this many spectra, Colour by temperature helps, and the legend can be hidden in the Graph tab.");
     note.textContent = parts.join(" ");
     meltRow.hidden = !view.trend;

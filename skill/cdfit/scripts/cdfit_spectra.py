@@ -50,7 +50,8 @@ def analyse(session, lam=225.0):
         cfg = session.S["series"][ser["idx"]]
         if not cfg.get("visible") or not ser["xs"]:
             continue
-        rows.append({"name": ser["name"], "label": label_of(ser["name"]), "bands": E.bands(ser), "at": value_at(ser, lam)})
+        rows.append({"name": ser["name"], "label": label_of(ser["name"]), "bands": E.bands(ser), "at": value_at(ser, lam),
+                     "lo": min(ser["xs"])})
     labelled = [r for r in rows if r["label"]]
     groups = {}
     for r in labelled:
@@ -62,16 +63,22 @@ def analyse(session, lam=225.0):
     return {"lam": lam, "rows": rows, "groups": groups, "trend": trend, "celsius": celsius}
 
 
+def edge_min(r):
+    return r["bands"]["xMin"] <= r.get("lo", -math.inf) + 1e-9
+
+
 def table(v):
     head = ["Spectrum", "T (°C)" if v["celsius"] else "Number in name", "λ max (nm)", "Value at max", "λ min (nm)",
             "Value at min", "Crossover (nm)", "Rpn", f"Value at {E.fmt_num(v['lam'], 4)} nm"]
     out = [head]
     for r in v["rows"]:
         b = r["bands"]
+        edge = edge_min(r)   # a minimum at the lowest wavelength is not the band near 197 nm: λmin and Rpn stay blank
         out.append([r["name"], E.fmt_num(r["label"]["value"], 4) if r["label"] else "—",
-                    E.fmt_num(b["xMax"], 5) if b["hasPos"] else "—", E.fmt_num(b["yMax"], 4), E.fmt_num(b["xMin"], 5),
-                    E.fmt_num(b["yMin"], 4), E.js_to_fixed(b["cross"], 1) if math.isfinite(b["cross"]) else "—",
-                    E.js_to_fixed(b["rpn"], 3) if math.isfinite(b["rpn"]) else "—", E.fmt_num(r["at"], 4)])
+                    E.fmt_num(b["xMax"], 5) if b["hasPos"] else "—", E.fmt_num(b["yMax"], 4),
+                    "—" if edge else E.fmt_num(b["xMin"], 5), "—" if edge else E.fmt_num(b["yMin"], 4),
+                    E.js_to_fixed(b["cross"], 1) if math.isfinite(b["cross"]) else "—",
+                    E.js_to_fixed(b["rpn"], 3) if not edge and math.isfinite(b["rpn"]) else "—", E.fmt_num(r["at"], 4)])
     return out
 
 
