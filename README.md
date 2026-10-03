@@ -17,6 +17,7 @@ The same fitting also runs inside Claude as a skill (see [Use CD Fit in Claude](
 | `skill/cdfit/` | The Claude skill: `SKILL.md` and a Python port of the fitting, graph and Word round trip |
 | `skill/tests/` | Checks the port against the add-in itself (synthetic data only) |
 | `tools/install_skill.py` | Installs the skill for Claude Code and builds `dist/cdfit-skill.zip` for claude.ai |
+| `artifact/cdfit.html`, `tools/build_artifact.py` | The add-in as a page in Claude (a claude.ai Artifact), built from `src/taskpane.html` |
 
 ## Use CD Fit in Claude
 
@@ -29,6 +30,11 @@ CD Fit graphs that are already in a Word document.
   `~/.claude/skills/cdfit` and builds the zip below. New sessions pick it up.
 - **claude.ai, for yourself**: upload `dist/cdfit-skill.zip` under **Customize → Skills → + → Create skill →
   Upload a skill**. Code execution must be on.
+- **As a page in Claude**: `artifact/cdfit.html` is the add-in's own script in a full-page layout, published as a
+  claude.ai Artifact. It adds Save PNG/SVG (the viewer asks before saving) and an optional *Ask Claude about this
+  fit*, which sends the data and results to Claude on the viewer's own usage. Rebuild it with
+  `py tools/build_artifact.py --check` and republish it with the Artifact tool (icon `chart`, capabilities
+  `downloads` and `sample`).
 - **claude.ai, for the whole lab** (Team plan, Owner): upload the same zip under **Organization settings →
   Plugins & skills → Add → Upload a skill**. In that page's **Policy** tab, *Cloud code execution and file
   creation* and *Skills* must be on. The skill is then on for every member.
@@ -44,6 +50,7 @@ py skill/tests/make_golden.py
 py skill/tests/test_parity.py
 py skill/tests/test_cli.py
 py tools/install_skill.py
+py tools/build_artifact.py --check
 ```
 
 ## Installing

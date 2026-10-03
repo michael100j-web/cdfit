@@ -1,0 +1,1696 @@
+<title>CD Fit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: a lab bench. The graph is the instrument's display (left, held in view on wide screens);
+   the controls are its panel (right); on phones the panel follows the graph. */
+:root {
+  --bg: #f2f5f5;
+  --surface: #ffffff;
+  --sunken: #e8eeee;
+  --field: #ffffff;
+  --fg: #16232a;
+  --muted: #586a70;
+  --border: #d2dcdd;
+  --accent: #0f6466;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcebeb;
+  --err: #b42318;
+  --ok: #18794e;
+  --paper: #ffffff;
+  --paper-edge: #cfd9da;
+  --shadow: 0 1px 2px rgb(16 40 44 / 6%), 0 10px 28px -16px rgb(16 40 44 / 28%);
+  --badge-bg: #fff3d1;
+  --badge-fg: #6b4e00;
+  --badge-edge: #ecd58f;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-data: "IBM Plex Mono", Consolas, "Cascadia Mono", ui-monospace, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1517; --surface: #152024; --sunken: #1b292d; --field: #101b1e; --fg: #e2ebeb; --muted: #94a7ab;
+    --border: #2b3c41; --accent: #5ec2bd; --accent-ink: #052625; --accent-soft: #173638; --err: #ff8f85;
+    --ok: #6fd39a; --paper: #ffffff; --paper-edge: #2b3c41; --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 30px -14px rgb(0 0 0 / 60%);
+    --badge-bg: #3a2f12; --badge-fg: #f3d58a; --badge-edge: #5a4818; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1517; --surface: #152024; --sunken: #1b292d; --field: #101b1e; --fg: #e2ebeb; --muted: #94a7ab;
+  --border: #2b3c41; --accent: #5ec2bd; --accent-ink: #052625; --accent-soft: #173638; --err: #ff8f85;
+  --ok: #6fd39a; --paper: #ffffff; --paper-edge: #2b3c41; --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 30px -14px rgb(0 0 0 / 60%);
+  --badge-bg: #3a2f12; --badge-fg: #f3d58a; --badge-edge: #5a4818; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-ui); padding-inline: clamp(16px, 3vw, 32px); padding-block: 0 32px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding-block: 16px 14px; }
+.brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.brand svg { color: var(--accent); flex: none; }
+.host { font-size: 12px; color: var(--muted); }
+#modes { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+#modes button { border: 0; border-right: 1px solid var(--border); border-radius: 0; padding: 7px 14px; font-weight: 500; color: var(--muted); background: transparent; }
+#modes button:last-child { border-right: 0; }
+#modes button.active { background: var(--accent); color: var(--accent-ink); }
+.app { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr) minmax(330px, 430px); }
+  .stage { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+}
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.paper { margin: 0; background: var(--paper); border: 1px solid var(--paper-edge); border-radius: var(--radius); padding: 14px 16px 8px; box-shadow: var(--shadow); }
+#preview svg { width: 100%; height: auto; display: block; }
+#preview .pt { cursor: pointer; }
+#preview .pt:hover > * { stroke: #000000; stroke-width: 1.5; }
+.badge { align-self: flex-start; font-size: 12px; color: var(--badge-fg); background: var(--badge-bg); border: 1px solid var(--badge-edge); border-radius: 999px; padding: 2px 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; font-weight: 500; padding: 7px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); border-radius: var(--radius); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.55; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.small { padding: 3px 9px; font-size: 12.5px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.word-only, #linked { display: none !important; }
+body.nofit #btnFit { display: none; }
+#status { font-size: 13px; color: var(--muted); min-height: 20px; font-variant-numeric: tabular-nums; }
+#status.err { color: var(--err); }
+#status.ok { color: var(--ok); }
+.ask { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; display: grid; gap: 8px; }
+.ask h2 { font-size: 14px; margin: 0; font-weight: 600; }
+.ask-head { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
+.ask-out { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; max-width: 72ch; }
+.ask-out:empty { display: none; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+nav.tabs { display: flex; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); position: sticky; top: env(safe-area-inset-top, 0px); background: var(--surface); z-index: 2; border-radius: var(--radius) var(--radius) 0 0; overflow-x: auto; }
+nav.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 10px 10px 8px; color: var(--muted); }
+nav.tabs button.active { border-bottom-color: var(--accent); color: var(--fg); font-weight: 600; }
+section.tab { display: none; padding: 12px 14px 20px; }
+section.tab.active { display: block; }
+h3 { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+h3:first-child { margin-top: 2px; }
+textarea { width: 100%; font: 12.5px/1.4 var(--font-data); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 8px; resize: vertical; color: var(--fg); background: var(--field); }
+input[type=number], input[type=text], select { font: inherit; padding: 5px 7px; border: 1px solid var(--border); border-radius: var(--radius); width: 100%; min-width: 0; background: var(--field); color: var(--fg); }
+input[type=color] { width: 30px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--field); }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; align-items: end; }
+label.f { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 3px; min-width: 0; }
+label.c { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.hint { font-size: 12px; color: var(--muted); }
+.msg { font-size: 12.5px; margin-top: 4px; }
+.msg.err { color: var(--err); }
+#styleList, #results, #paramTable { overflow-x: auto; }
+table.t { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.t th, table.t td { border-bottom: 1px solid var(--border); padding: 4px 5px; text-align: left; }
+table.t th { color: var(--muted); font-weight: 500; }
+table.t td.num, table.t th.num { text-align: right; }
+table.t input[type=text] { padding: 3px 5px; }
+.series-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 0; }
+.card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.card h4 { margin: 0 0 6px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+.swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.big { font-size: 18px; font-weight: 600; margin: 2px 0 8px; font-variant-numeric: tabular-nums; }
+details summary { cursor: pointer; color: var(--accent); margin-top: 12px; }
+code { font-family: var(--font-data); font-size: 12px; background: var(--sunken); padding: 0 4px; border-radius: 3px; }
+@media (max-width: 520px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+<header class="top">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 3v26h26" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M6 9c6 0 7 1 10 8s5 7 12 7" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="9" cy="9" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/><circle cx="24" cy="23" r="2" fill="currentColor"/></svg>
+    <h1>CD Fit</h1>
+    <span class="host" id="hostLabel">Same fit as the Word add-in, v1.4.2</span>
+  </div>
+  <div id="modes" role="tablist" aria-label="Mode">
+  <button data-mode="melt" title="Ellipticity vs temperature, fitted for Tm">CD melting</button>
+  <button data-mode="spec" title="Ellipticity vs wavelength, plotted as lines, with band positions and Rpn">CD spectrum</button>
+  <button data-mode="uv" title="Absorbance vs temperature, fitted with the same Tm model">UV melting</button>
+</div>
+</header>
+<main class="app">
+<div class="stage">
+<span class="badge" id="exampleBadge" hidden>Example data: paste your own in the Data tab</span>
+<figure class="paper"><div id="preview"></div></figure>
+
+
+<div class="actions">
+  <button class="primary" id="btnFit" title="Re-run the fit">Fit</button>
+  <button class="word-only primary" id="btnInsert" title="Insert the graph at the cursor">Insert graph</button>
+  <button class="word-only" id="btnReplace" title="Replace the selected graph picture with this one">Update selected graph</button>
+  <button class="word-only" id="btnLoad" title="Load data and settings from a graph picture inserted by CD Fit">Edit selected graph</button>
+  <button class="word-only" id="btnTable" title="Insert the fit results as a Word table">Insert results table</button>
+  <button class="browser-only" id="btnPng">Save PNG</button>
+  <button class="browser-only" id="btnSvg">Save SVG</button>
+  <button id="btnCopyTop">Copy results</button>
+</div>
+<div id="linked"><span>📈 Showing the data saved in the <b>selected graph</b>. Edit anything, then save it back into the graph.</span><button class="small primary" id="btnLinkedSave">Save to graph</button></div>
+<div id="status" role="status"></div>
+<section class="ask" id="ask" hidden aria-labelledby="askTitle">
+  <div class="ask-head"><h2 id="askTitle">Ask Claude about this fit</h2><span class="hint">Sends the data and results. Uses your Claude usage.</span></div>
+  <label class="f" for="askQ">Question (optional)<textarea id="askQ" rows="2" placeholder="Is this fit trustworthy, and is there anything I should change?"></textarea></label>
+  <div class="row"><button class="primary" id="askBtn">Ask Claude</button><button id="askStop" hidden>Stop</button><span class="hint" id="askNote"></span></div>
+  <div class="ask-out" id="askOut" aria-live="polite"></div>
+</section>
+</div>
+<div class="panel">
+
+<nav class="tabs" role="tablist">
+  <button data-tab="data" class="active">Data</button>
+  <button data-tab="model">Model</button>
+  <button data-tab="format">Graph</button>
+  <button data-tab="results">Results</button>
+</nav>
+
+<!-- DATA -->
+<section class="tab active" id="tab-data">
+  <h3>Data table</h3>
+  <div class="hint"><span id="dataHint"></span> An optional header row gives the names. Decimal commas are fine.</div>
+  <textarea id="data" rows="11" spellcheck="false"></textarea>
+  <div class="row">
+    <button class="small" id="btnExample">Load example</button>
+    <button class="small word-only" id="btnImport" title="Select a table in the document first">Import table from document</button>
+    <button class="small" id="btnFile">Open file…</button>
+    <input type="file" id="file" accept=".csv,.txt,.tsv,.dat" hidden>
+    <button class="small" id="btnClear">Clear</button>
+  </div>
+  <div class="grid" style="margin-top:6px">
+    <label class="f">Multiply Y by<input type="number" id="yMult" step="any" value="1"></label>
+    <label class="f">Exclude X outside<span style="display:flex;gap:4px"><input type="number" id="xFrom" step="any" placeholder="min"><input type="number" id="xTo" step="any" placeholder="max"></span></label>
+  </div>
+  <h3>Data sets</h3>
+  <div id="seriesList" class="hint">No data yet.</div>
+</section>
+
+<!-- MODEL -->
+<section class="tab" id="tab-model">
+  <label class="c" style="margin-bottom:6px"><input type="checkbox" id="fitOn"> <b>Fit a model to the data</b></label>
+  <div id="modelBox">
+  <h3>Equation</h3>
+  <select id="preset"></select>
+  <textarea id="eq" rows="13" spellcheck="false" style="margin-top:6px"></textarea>
+  <div id="eqMsg" class="msg"></div>
+  <h3>Parameters</h3>
+  <div class="hint">Leave the value blank for an automatic initial estimate. Tick <b>Fix</b> to hold a parameter constant at that value.</div>
+  <table class="t" id="paramTable"></table>
+  <h3>Transition direction</h3>
+  <select id="stepDir">
+    <option value="any">Either direction</option>
+    <option value="up">Signal rises on unfolding (e.g. UV hyperchromicity)</option>
+    <option value="down">Signal falls on unfolding (e.g. CD at 225 nm)</option>
+  </select>
+  <div class="hint" id="stepHint" style="margin-top:4px"></div>
+  <details>
+    <summary>Equation syntax</summary>
+    <div class="hint" style="margin-top:6px">
+      One definition per line, <code>NAME=expression</code>, as in Prism's user-defined equations. <code>X</code> is the independent variable and the last line must define <code>Y</code>.
+      Any name that is never defined becomes a fitted parameter. Names are case-insensitive. Lines starting with <code>;</code> are comments.<br>
+      Operators: <code>+ - * / ^</code> and parentheses. Functions: <code>EXP LN LOG SQRT ABS CBRT MIN MAX SIN COS TAN ATAN</code>.
+      Odd roots of negative numbers (e.g. <code>^(1/3)</code>) return the real root.
+    </div>
+  </details>
+  </div>
+</section>
+
+<!-- FORMAT -->
+<section class="tab" id="tab-format">
+  <h3>Axis titles</h3>
+  <label class="f">X axis<input type="text" id="xTitle"></label>
+  <label class="f" style="margin-top:4px">Y axis<input type="text" id="yTitle"></label>
+  <div class="hint">Markup: <code>*italic*</code>, <code>^{superscript}</code>, <code>_{subscript}</code>.</div>
+
+  <h3>X axis range</h3>
+  <div class="grid4">
+    <label class="f">Min<input type="number" id="xMin" step="any" placeholder="auto"></label>
+    <label class="f">Max<input type="number" id="xMax" step="any" placeholder="auto"></label>
+    <label class="f">Major tick<input type="number" id="xStep" step="any" placeholder="auto"></label>
+    <label class="f">Minor ticks<input type="number" id="xMinor" min="0" max="9" step="1"></label>
+  </div>
+  <div class="grid" style="margin-top:4px"><label class="f">Scale<select id="xScale"><option value="linear">Linear</option><option value="log">Logarithmic (log₁₀)</option></select></label></div>
+  <h3>Y axis range</h3>
+  <div class="grid4">
+    <label class="f">Min<input type="number" id="yMin" step="any" placeholder="auto"></label>
+    <label class="f">Max<input type="number" id="yMax" step="any" placeholder="auto"></label>
+    <label class="f">Major tick<input type="number" id="yStep" step="any" placeholder="auto"></label>
+    <label class="f">Minor ticks<input type="number" id="yMinor" min="0" max="9" step="1"></label>
+  </div>
+  <div class="grid" style="margin-top:4px"><label class="f">Scale<select id="yScale"><option value="linear">Linear</option><option value="log">Logarithmic (log₁₀)</option></select></label></div>
+  <div class="hint">On a log axis the major ticks sit on each power of ten, "Minor ticks" above 0 adds the 2–9 ticks, and points ≤ 0 are hidden.</div>
+
+  <h3>Data set styles</h3>
+  <div id="styleList" class="hint">No data yet.</div>
+
+  <h3>Appearance</h3>
+  <div class="grid">
+    <label class="f">Plot width (px)<input type="number" id="plotW" min="150" max="1500" step="10"></label>
+    <label class="f">Plot height (px)<input type="number" id="plotH" min="100" max="1500" step="10"></label>
+    <label class="f">Font size<input type="number" id="fontSize" min="6" max="40" step="1"></label>
+    <label class="f">Font<select id="fontFamily"><option>Arial</option><option>Helvetica</option><option>Calibri</option><option>Times New Roman</option><option>Segoe UI</option></select></label>
+    <label class="f">Default symbol size<input type="number" id="markerSize" min="0" max="20" step="0.5"></label>
+    <label class="f">Curve width<input type="number" id="lineW" min="0" max="10" step="0.25"></label>
+    <label class="f">Axis width<input type="number" id="axisW" min="0.25" max="6" step="0.25"></label>
+    <label class="f">Legend<select id="legend"><option value="tr">Inside, top right</option><option value="tl">Inside, top left</option><option value="br">Inside, bottom right</option><option value="bl">Inside, bottom left</option><option value="off">Hidden</option></select></label>
+  </div>
+  <div style="margin-top:8px">
+    <label class="c"><input type="checkbox" id="showPoints"> Show data points</label>
+    <label class="c"><input type="checkbox" id="showCurve"> Show fitted curve</label>
+    <label class="c"><input type="checkbox" id="connect"> Connect data points with lines (spectra)</label>
+    <label class="c"><input type="checkbox" id="zeroLine"> Show zero line</label>
+    <label class="c"><input type="checkbox" id="curveAxis"> Extend curve over whole X axis</label>
+    <label class="c"><input type="checkbox" id="legendTm"> Show <i>T</i><sub>m</sub> in legend</label>
+    <label class="c"><input type="checkbox" id="tmLine"> Mark <i>T</i><sub>m</sub> with dotted line</label>
+    <label class="c"><input type="checkbox" id="hollow"> Hollow symbols by default</label>
+  </div>
+
+  <h3>Export</h3>
+  <div class="grid">
+    <label class="f">Width in document (cm)<input type="number" id="exportCm" min="2" max="40" step="0.5"></label>
+    <label class="f">Format<select id="exportFmt"><option value="png300">PNG, 300 dpi</option><option value="png600">PNG, 600 dpi</option><option value="svg">SVG vector (not re-editable)</option></select></label>
+  </div>
+  <div class="row"><button class="small" id="btnResetFmt">Reset graph format</button></div>
+</section>
+
+<!-- RESULTS -->
+<section class="tab" id="tab-results">
+  <div id="results" class="hint">Fit results appear here.</div>
+  <div class="row"><button class="small" id="btnCopy">Copy results (tab-separated)</button></div>
+</section>
+
+</div>
+</main>
+<script>
+"use strict";
+
+/* ============================ Presets ============================ */
+const PRESETS = {
+  cmp: {
+    label: "Tm of CMPs (trimer ⇌ 3 monomers, ΔH fixed)",
+    text:
+`; Temp vs. Elipticity -- Tm of CMPs
+; X: Temperature (°C)   Y: Ellipticity
+R=8.31
+H=-500000
+K=EXP(H/(R*(X+273.15))*((X+273.15)/(Tm+273.15)-1)-ln(0.75*0.0002^2))
+P=1/(3*K*(0.0002^2))
+U=(-P/2+(P^2/4+P^3/27)^(1/2))^(1/3)
+V=-(P/2+(P^2/4+P^3/27)^(1/2))^(1/3)
+F= U+V+1
+CDU=REFU+DEU*(X+273.15)
+CDN=REFN+DEN*(X+273.15)
+Y=F*(CDN-CDU)+CDU`
+  },
+  twostate: {
+    label: "Two-state unfolding, monomolecular (ΔH fitted)",
+    text:
+`; Monomolecular two-state transition, sloping baselines
+; X: Temperature (°C)   Y: Ellipticity   H: folding enthalpy (J/mol, negative)
+R=8.314
+T=X+273.15
+K=EXP(-H/R*(1/T-1/(Tm+273.15)))
+F=K/(1+K)
+CDU=REFU+DEU*T
+CDN=REFN+DEN*T
+Y=F*(CDN-CDU)+CDU`
+  },
+  boltz: {
+    label: "Boltzmann sigmoid",
+    text:
+`; Boltzmann sigmoid (Y goes from Bottom at low X to Top at high X)
+Y=Bottom+(Top-Bottom)/(1+EXP((V50-X)/Slope))`
+  }
+};
+const COLORS = ["#0a0ac8", "#d11a1a", "#16923a", "#000000", "#e07b00", "#7b2cbf", "#008b8b", "#c2185b"];
+const SHAPES = ["circle", "square", "triangle", "diamond", "tridown"];
+const TAG = "#CDFIT-STATE ";
+
+const DEFAULT_FMT = {
+  xTitle: "*T* (°C)",
+  yTitle: "*θ*_{225} (10^{3} deg cm^{2} dmol^{-1})",
+  xMin: "", xMax: "", xStep: "", xMinor: 1, xScale: "linear",
+  yMin: "", yMax: "", yStep: "", yMinor: 1, yScale: "linear",
+  plotW: 430, plotH: 290, fontSize: 16, fontFamily: "Arial",
+  markerSize: 5, lineW: 2, axisW: 1.25, legend: "tr",
+  showPoints: true, showCurve: true, connect: false, zeroLine: false, curveAxis: false, legendTm: true, tmLine: false, hollow: false,
+  exportCm: 12, exportFmt: "png300"
+};
+
+/* ============================ Modes ============================ */
+// Each mode has its own data and settings; switching keeps the others in MODE_STORE.
+const MODES = {
+  melt: { label: "CD melting", fit: true, fmt: {},
+          hint: "Paste from Excel/Prism: first column temperature, then one ellipticity column per sample." },
+  spec: { label: "CD spectrum", fit: false,
+          fmt: { xTitle: "*λ* (nm)", yTitle: "[*θ*] (10^{3} deg cm^{2} dmol^{-1})", showPoints: false, connect: true, zeroLine: true, legendTm: false, xMinor: 1 },
+          hint: "Paste from the spectrometer: first column wavelength (nm), then one ellipticity column per spectrum, e.g. one per temperature." },
+  uv:   { label: "UV melting", fit: true, stepDir: "up", fmt: { yTitle: "*A*_{215}", legend: "br" },
+          hint: "Paste from Excel: first column temperature, then one absorbance column per sample. The same Tm model is fitted, with absorbance rising on unfolding (Model tab)." }
+};
+function modeFmt(mode) { return { ...DEFAULT_FMT, ...(MODES[mode] || MODES.melt).fmt }; }
+function baseState(mode) {
+  return { mode, dataText: "", yMult: 1, xFrom: "", xTo: "", series: [], preset: "cmp", eqText: PRESETS.cmp.text, params: {}, fit: MODES[mode].fit,
+           stepDir: MODES[mode].stepDir || "any", fmt: modeFmt(mode) };
+}
+function modeDefaults(mode) { return { ...baseState(mode), dataText: exampleData(mode) }; }
+let MODE_STORE = {};
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+/* ============================ State ============================ */
+let S = baseState("melt");
+// S.series: [{color, visible, name, shape, fill, size, line}] indexed by column
+// S.params: lowercased name -> {value:"", fixed:false}
+let DATA = null;          // parsed data
+let MODEL = null;         // compiled model
+let FITS = [];            // fit results per series index
+
+const $ = (id) => document.getElementById(id);
+function store() { try { localStorage.setItem("cdfit.state.v2", JSON.stringify({ current: S, others: MODE_STORE })); } catch (e) {} }
+function restoreStored() {
+  try {
+    const t = localStorage.getItem("cdfit.state.v2");
+    if (t) return JSON.parse(t);
+    const old = localStorage.getItem("cdfit.state.v1");
+    if (old) return { current: JSON.parse(old), others: {} };
+  } catch (e) {}
+  return null;
+}
+function setStatus(msg, kind) { const el = $("status"); el.textContent = msg || ""; el.className = kind || ""; }
+
+/* ============================ Data parsing ============================ */
+function parseNum(s) {
+  s = String(s).trim();
+  if (s === "") return NaN;
+  s = s.replace(/−/g, "-").replace(/\s/g, "");
+  if (!/^[-+]?(\d+[.,]?\d*|[.,]\d+)([eE][-+]?\d+)?$/.test(s)) return NaN;
+  return parseFloat(s.replace(",", "."));
+}
+function parseData(text) {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
+  if (!lines.length) return { names: [], rows: [] };
+  let splitter;
+  if (lines.some(l => l.includes("\t"))) splitter = l => l.split("\t");
+  else if (lines.some(l => l.includes(";"))) splitter = l => l.split(";");
+  else if (lines.some(l => /\d,\d/.test(l) && /\s/.test(l.trim()))) splitter = l => l.trim().split(/\s+/); // decimal commas, space separated
+  else splitter = l => l.trim().split(/[\s,]+/);
+  let cells = lines.map(splitter);
+  let names = null;
+  const first = cells[0];
+  if (first.slice(1).some(c => c.trim() !== "" && isNaN(parseNum(c))) || isNaN(parseNum(first[0]))) {
+    names = first.map(c => c.trim());
+    cells = cells.slice(1);
+  }
+  const ncol = Math.max(2, ...cells.map(r => r.length), names ? names.length : 0);
+  const rows = cells.map(r => { const o = []; for (let i = 0; i < ncol; i++) o.push(parseNum(r[i] ?? "")); return o; })
+                    .filter(r => isFinite(r[0]));
+  const nSeries = ncol - 1;
+  const outNames = [];
+  for (let j = 0; j < nSeries; j++) outNames.push((names && names[j + 1]) || (nSeries === 1 ? "Data" : "Data " + (j + 1)));
+  return { xName: names ? names[0] : "X", names: outNames, rows };
+}
+function buildData() {
+  const p = parseData(S.dataText);
+  const mult = isFinite(parseFloat(S.yMult)) ? parseFloat(S.yMult) : 1;
+  const lo = S.xFrom === "" ? -Infinity : parseFloat(S.xFrom), hi = S.xTo === "" ? Infinity : parseFloat(S.xTo);
+  const series = p.names.map((name, j) => {
+    const xs = [], ys = [], xsEx = [], ysEx = [];
+    for (const r of p.rows) {
+      const x = r[0], y = r[j + 1];
+      if (!isFinite(y)) continue;
+      if (x < lo || x > hi) { xsEx.push(x); ysEx.push(y * mult); } else { xs.push(x); ys.push(y * mult); }
+    }
+    return { name, xs, ys, xsEx, ysEx };
+  });
+  // keep per-series settings aligned with columns
+  series.forEach((s, j) => {
+    if (!S.series[j]) S.series[j] = { color: COLORS[j % COLORS.length], visible: true, name: "" };
+  });
+  S.series.length = series.length;
+  series.forEach((s, j) => { if (S.series[j].name) s.name = S.series[j].name; s.idx = j; });
+  DATA = { series, xName: p.xName };
+}
+
+/* ============================ Equation compiler ============================ */
+const FUNCS = {
+  exp: "Math.exp", ln: "Math.log", log: "Math.log10", log10: "Math.log10", sqrt: "Math.sqrt", abs: "Math.abs",
+  cbrt: "Math.cbrt", sin: "Math.sin", cos: "Math.cos", tan: "Math.tan", atan: "Math.atan", min: "Math.min", max: "Math.max", pow: "$pow"
+};
+const CONSTS = { pi: "Math.PI" };
+function $pow(a, b) {
+  if (a < 0 && !Number.isInteger(b)) {
+    const inv = 1 / b, r = Math.round(inv);
+    if (Math.abs(inv - r) < 1e-9 && Math.abs(r % 2) === 1) return -Math.pow(-a, b);
+  }
+  return Math.pow(a, b);
+}
+function tokenize(src, lineNo) {
+  const toks = []; let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    const m = /^(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/.exec(src.slice(i));
+    if (m) { toks.push({ t: "num", v: m[0] }); i += m[0].length; continue; }
+    const id = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
+    if (id) { toks.push({ t: "id", v: id[0] }); i += id[0].length; continue; }
+    if (src.startsWith("**", i)) { toks.push({ t: "op", v: "^" }); i += 2; continue; }
+    if ("+-*/^(),".includes(c)) { toks.push({ t: "op", v: c }); i++; continue; }
+    throw new Error(`Line ${lineNo}: unexpected character "${c}"`);
+  }
+  return toks;
+}
+function compileModel(text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const defs = [];
+  lines.forEach((raw, k) => {
+    const line = raw.trim();
+    if (!line || line.startsWith(";") || line.startsWith("//") || line.startsWith("#")) return;
+    const eqi = line.indexOf("=");
+    if (eqi < 0) throw new Error(`Line ${k + 1}: expected NAME=expression`);
+    const name = line.slice(0, eqi).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`Line ${k + 1}: "${name}" is not a valid name`);
+    if (name.toLowerCase() === "x") throw new Error(`Line ${k + 1}: X cannot be redefined`);
+    defs.push({ name, key: name.toLowerCase(), expr: line.slice(eqi + 1), line: k + 1 });
+  });
+  if (!defs.length) throw new Error("The equation is empty.");
+  if (defs[defs.length - 1].key !== "y") throw new Error("The last definition must be Y=…");
+  const assignedAll = new Set(defs.map(d => d.key));
+  const defined = new Set();
+  const params = [];          // display names
+  const paramIdx = {};        // key -> index
+  const body = [];
+  for (const d of defs) {
+    const toks = tokenize(d.expr, d.line);
+    let pos = 0;
+    const peek = () => toks[pos];
+    const eat = (v) => { const t = toks[pos]; if (!t || t.v !== v) throw new Error(`Line ${d.line}: expected "${v}"`); pos++; };
+    const parseExpr = () => {
+      let s = parseTerm();
+      while (peek() && (peek().v === "+" || peek().v === "-")) { const op = toks[pos++].v; s = `(${s}${op}${parseTerm()})`; }
+      return s;
+    };
+    const parseTerm = () => {
+      let s = parseUnary();
+      while (peek() && (peek().v === "*" || peek().v === "/")) { const op = toks[pos++].v; s = `(${s}${op}${parseUnary()})`; }
+      return s;
+    };
+    const parseUnary = () => {
+      if (peek() && peek().v === "-") { pos++; return `(-${parseUnary()})`; }
+      if (peek() && peek().v === "+") { pos++; return parseUnary(); }
+      return parsePower();
+    };
+    const parsePower = () => {
+      const base = parsePrimary();
+      if (peek() && peek().v === "^") { pos++; return `$pow(${base},${parseUnary()})`; }
+      return base;
+    };
+    const parsePrimary = () => {
+      const t = toks[pos++];
+      if (!t) throw new Error(`Line ${d.line}: expression ends unexpectedly`);
+      if (t.t === "num") return `(${t.v})`;
+      if (t.v === "(") { const s = parseExpr(); eat(")"); return `(${s})`; }
+      if (t.t === "id") {
+        const key = t.v.toLowerCase();
+        if (peek() && peek().v === "(") {
+          const fn = FUNCS[key];
+          if (!fn) throw new Error(`Line ${d.line}: unknown function ${t.v}()`);
+          pos++;
+          const args = [];
+          if (!(peek() && peek().v === ")")) { args.push(parseExpr()); while (peek() && peek().v === ",") { pos++; args.push(parseExpr()); } }
+          eat(")");
+          return `${fn}(${args.join(",")})`;
+        }
+        if (key === "x") return "x";
+        if (defined.has(key)) return `v_${key}`;
+        if (assignedAll.has(key)) throw new Error(`Line ${d.line}: ${t.v} is used before it is defined`);
+        if (CONSTS[key]) return CONSTS[key];
+        if (!(key in paramIdx)) { paramIdx[key] = params.length; params.push(t.v); }
+        return `p[${paramIdx[key]}]`;
+      }
+      throw new Error(`Line ${d.line}: unexpected "${t.v}"`);
+    };
+    const js = parseExpr();
+    if (pos < toks.length) throw new Error(`Line ${d.line}: unexpected "${toks[pos].v}"`);
+    body.push(`${defined.has(d.key) ? "" : "let "}v_${d.key}=${js};`);
+    defined.add(d.key);
+  }
+  if (!params.length) throw new Error("The equation has no parameters to fit.");
+  const src = `"use strict";return function(x,p){${body.join("")}return v_y;};`;
+  const fn = new Function("$pow", src)($pow);
+  // vars(x, p) returns every defined quantity, e.g. the baselines CDN and CDU
+  const vsrc = `"use strict";return function(x,p){${body.join("")}return {${[...defined].map(k => `${k}:v_${k}`).join(",")}};};`;
+  const vars = new Function("$pow", vsrc)($pow);
+  return { params, keys: params.map(p => p.toLowerCase()), fn, vars, defs: defined };
+}
+
+/* ============================ Initial estimates ============================ */
+function linfit(xs, ys) {
+  const n = xs.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; }
+  const den = n * sxx - sx * sx;
+  const b = Math.abs(den) < 1e-300 ? 0 : (n * sxy - sx * sy) / den;
+  return { a: (sy - b * sx) / n, b };
+}
+function estimates(xs, ys) {
+  const idx = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
+  const X = idx.map(i => xs[i]), Y = idx.map(i => ys[i]);
+  const n = X.length, k = Math.max(3, Math.min(n, Math.round(n * 0.2)));
+  const K = (x) => x + 273.15;
+  const low = linfit(X.slice(0, k).map(K), Y.slice(0, k));
+  const high = linfit(X.slice(n - k).map(K), Y.slice(n - k));
+  let tm = (X[0] + X[n - 1]) / 2;
+  for (let i = 1; i < n; i++) {
+    const f = (i) => { const yn = low.a + low.b * K(X[i]), yu = high.a + high.b * K(X[i]); return (Y[i] - yu) / (yn - yu); };
+    const f0 = f(i - 1), f1 = f(i);
+    if ((f0 - 0.5) * (f1 - 0.5) <= 0 && f0 !== f1) { tm = X[i - 1] + (0.5 - f0) / (f1 - f0) * (X[i] - X[i - 1]); break; }
+  }
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  return {
+    tm, refn: low.a, den: low.b, refu: high.a, deu: high.b, h: -300000,
+    bottom: mean(Y.slice(0, k)), top: mean(Y.slice(n - k)), v50: tm, slope: (X[n - 1] - X[0]) / 15
+  };
+}
+
+/* ============================ Levenberg–Marquardt ============================ */
+function solveScaled(A, g) {
+  const m = g.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
+  const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat([g[i] / D[i]]));
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (!(Math.abs(M[piv][c]) > 1e-14)) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c] / M[c][c]; if (f) for (let k = c; k <= m; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r[m] / r[i] / D[i]);
+}
+function invertScaled(A) {
+  const m = A.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
+  const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat(A.map((_, j) => (i === j ? 1 : 0))));
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (!(Math.abs(M[piv][c]) > 1e-15)) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    const d = M[c][c]; for (let k = 0; k < 2 * m; k++) M[c][k] /= d;
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c]; if (f) for (let k = 0; k < 2 * m; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r.slice(m).map((v, j) => v / (D[i] * D[j])));
+}
+function tCrit975(df) {
+  const tab = [NaN, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228];
+  if (df <= 10) return tab[df] ?? NaN;
+  const z = 1.959963985, z2 = z * z;
+  return z + (z2 * z + z) / (4 * df) + (5 * z2 * z2 * z + 16 * z2 * z + 3 * z) / (96 * df * df)
+    + (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / (384 * df ** 3);
+}
+function lmFit(fn, xs, ys, p0, fixed) {
+  const n = xs.length, free = [];
+  p0.forEach((_, i) => { if (!fixed[i]) free.push(i); });
+  const m = free.length;
+  if (n <= m) throw new Error(`Only ${n} points for ${m} free parameters.`);
+  const evalR = (p) => {
+    const r = new Float64Array(n); let s = 0;
+    for (let i = 0; i < n; i++) { const yi = fn(xs[i], p); if (!isFinite(yi)) return null; r[i] = ys[i] - yi; s += r[i] * r[i]; }
+    return { r, s };
+  };
+  const jac = (p, central) => {
+    const J = [];
+    for (const k of free) {
+      const h = (central ? 6e-6 : 1.5e-8) * Math.max(Math.abs(p[k]), 1e-3);
+      const pp = p.slice(); pp[k] += h;
+      const col = new Float64Array(n);
+      if (central) {
+        const pm = p.slice(); pm[k] -= h;
+        for (let i = 0; i < n; i++) col[i] = (fn(xs[i], pp) - fn(xs[i], pm)) / (2 * h);
+      } else {
+        for (let i = 0; i < n; i++) col[i] = (fn(xs[i], pp) - fn(xs[i], p)) / h;
+      }
+      if (!col.every(isFinite)) return null;
+      J.push(col);
+    }
+    return J;
+  };
+  const normal = (J, r) => {
+    const A = [], g = [];
+    for (let a = 0; a < m; a++) {
+      A.push(new Array(m)); let s = 0;
+      for (let i = 0; i < n; i++) s += J[a][i] * r[i];
+      g.push(s);
+      for (let b = 0; b <= a; b++) { let t = 0; for (let i = 0; i < n; i++) t += J[a][i] * J[b][i]; A[a][b] = t; }
+    }
+    for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) A[a][b] = A[b][a];
+    return { A, g };
+  };
+  let P = p0.slice(), cur = evalR(P);
+  if (!cur) throw new Error("The model gives non-numeric values at the initial parameter values.");
+  let lambda = 1e-3, iter = 0, converged = false;
+  for (; iter < 400 && m > 0; iter++) {
+    const J = jac(P, false);
+    if (!J) throw new Error("Could not compute derivatives (the model is not finite near the current values).");
+    const { A, g } = normal(J, cur.r);
+    let improved = false, small = false;
+    while (lambda < 1e16) {
+      const M = A.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + 1e-300 : v)));
+      const d = solveScaled(M, g);
+      if (d) {
+        const Pn = P.slice(); free.forEach((k, j) => { Pn[k] += d[j]; });
+        const nw = evalR(Pn);
+        if (nw && nw.s <= cur.s) {
+          const rel = (cur.s - nw.s) / (cur.s + 1e-300);
+          small = rel < 1e-13 || d.every((dj, j) => Math.abs(dj) <= 1e-11 * (Math.abs(P[free[j]]) + 1e-11));
+          P = Pn; cur = nw; lambda = Math.max(lambda / 10, 1e-12); improved = true;
+          break;
+        }
+      }
+      lambda *= 10;
+    }
+    if (!improved || small) { converged = true; break; }
+  }
+  const df = n - m, ssr = cur.s;
+  const se = P.map(() => NaN);
+  let cov = null;
+  if (m > 0) {
+    const J = jac(P, true);
+    if (J) { const { A } = normal(J, cur.r); cov = invertScaled(A); }
+    if (cov) free.forEach((k, j) => { se[k] = Math.sqrt(Math.max(0, cov[j][j]) * ssr / df); });
+  }
+  const ybar = ys.reduce((a, b) => a + b, 0) / n;
+  const sst = ys.reduce((a, y) => a + (y - ybar) ** 2, 0);
+  const t = tCrit975(df);
+  return {
+    p: P, se, fixed: fixed.slice(), ci: P.map((v, i) => (fixed[i] ? null : [v - t * se[i], v + t * se[i]])),
+    ssr, df, n, r2: sst > 0 ? 1 - ssr / sst : NaN, syx: Math.sqrt(ssr / df), iter, converged, ambiguous: !cov
+  };
+}
+
+/* ============================ Transition direction ============================ */
+// The step is the unfolded minus the native baseline at the midpoint: CDU − CDN evaluated at X = Tm.
+function stepSupported(model) { return !!model && model.keys.includes("tm") && model.defs.has("cdu") && model.defs.has("cdn"); }
+function stepAt(p) { const v = MODEL.vars(p[MODEL.keys.indexOf("tm")], p); return v.cdu - v.cdn; }
+function stepOk(p, dir) { const s = stepAt(p); return dir === "up" ? s >= 0 : s <= 0; }
+// Fit with the step held to one sign, and Tm inside the data (outside it one baseline is unsupported and the step
+// means nothing). Tm is scanned across the data with the other parameters refitted at each Tm; the best allowed
+// point is refined, and the best point overall gives the unconstrained fit to compare against. The scan also
+// supplies good starting values, which drifting data often lack.
+function directedFit(xs, ys, p0, fixed, dir) {
+  const fn = MODEL.fn, iTm = MODEL.keys.indexOf("tm"), word = dir === "up" ? "rising" : "falling";
+  const lo = Math.min(...xs), hi = Math.max(...xs), inside = (p) => p[iTm] >= lo && p[iTm] <= hi;
+  const allowed = (p) => inside(p) && isFinite(stepAt(p)) && stepOk(p, dir);
+  if (fixed[iTm]) {
+    const r = lmFit(fn, xs, ys, p0, fixed);
+    if (allowed(r.p)) return r;
+    throw new Error(`With Tm fixed, the fit does not give a ${word} step inside the data. Free Tm or change the transition direction.`);
+  }
+  const N = 24, fixTm = fixed.slice();
+  fixTm[iTm] = true;
+  let best = null, bestAny = null;
+  const tryTm = (tm) => {
+    const p = p0.slice(); p[iTm] = tm;
+    try {
+      const r = lmFit(fn, xs, ys, p, fixTm);
+      if (!bestAny || r.ssr < bestAny.ssr) bestAny = r;
+      if (stepOk(r.p, dir) && (!best || r.ssr < best.ssr)) best = r;
+    } catch (e) {}
+  };
+  for (let k = 0; k <= N; k++) tryTm(lo + (hi - lo) * k / N);
+  let plain = null;
+  try { plain = lmFit(fn, xs, ys, bestAny ? bestAny.p : p0, fixed); } catch (e) {}
+  if (!best) throw new Error(`No fit gives a ${word} step at the transition.`);
+  let out = null;
+  try { const r = lmFit(fn, xs, ys, best.p, fixed); if (allowed(r.p)) out = r; } catch (e) {}
+  if (plain && allowed(plain.p) && (!out || plain.ssr <= out.ssr)) return plain;
+  if (!out) {   // the best allowed fit sits against the constraint: settle Tm by a fine scan, without a standard error
+    const t0 = best.p[iTm], h = (hi - lo) / N;
+    for (let k = -10; k <= 10; k++) { const tm = t0 + h * k / 10; if (tm >= lo && tm <= hi) tryTm(tm); }
+    out = { ...best, fixed: fixed.slice(), limit: true };
+    out.se = best.se.slice(); out.se[iTm] = NaN;
+    out.ci = best.ci.slice(); out.ci[iTm] = [NaN, NaN];
+  }
+  if (plain && !allowed(plain.p)) out.avoided = { tm: plain.p[iTm], syx: plain.syx, outside: !inside(plain.p) };
+  return out;
+}
+
+/* ============================ Fitting orchestration ============================ */
+function runFits() {
+  FITS = [];
+  if (!MODEL || !DATA) return;
+  DATA.series.forEach((s, j) => {
+    if (!S.series[j].visible || s.xs.length === 0) { FITS[j] = null; return; }
+    try {
+      const est = estimates(s.xs, s.ys);
+      const p0 = [], fixed = [];
+      MODEL.params.forEach((name, i) => {
+        const key = MODEL.keys[i], cfg = S.params[key] || { value: "", fixed: false };
+        const v = parseFloat(cfg.value);
+        const auto = key in est && isFinite(est[key]) ? est[key] : 1;
+        if (cfg.fixed && !isFinite(v)) throw new Error(`${name} is fixed but has no value.`);
+        p0.push(isFinite(v) ? v : auto); fixed.push(!!cfg.fixed);
+      });
+      const dir = stepSupported(MODEL) && (S.stepDir === "up" || S.stepDir === "down") ? S.stepDir : null;
+      const fit = dir ? directedFit(s.xs, s.ys, p0, fixed, dir) : lmFit(MODEL.fn, s.xs, s.ys, p0, fixed);
+      if (stepSupported(MODEL)) { fit.step = stepAt(fit.p); fit.dir = dir; }
+      FITS[j] = fit;
+    } catch (e) { FITS[j] = { error: e.message }; }
+  });
+}
+function paramValue(fit, name) {
+  if (!fit || fit.error || !MODEL) return null;
+  const i = MODEL.keys.indexOf(name.toLowerCase());
+  return i < 0 ? null : { v: fit.p[i], se: fit.se[i], ci: fit.ci[i], fixed: fit.fixed[i] };
+}
+
+/* ============================ Number formatting ============================ */
+function fmtNum(v, sig = 4) {
+  if (v === null || v === undefined || !isFinite(v)) return "—";
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 1e6 || a < 1e-3) return v.toExponential(sig - 1).replace("e", "E");
+  return String(Number(v.toPrecision(sig)));
+}
+function decimalsFor(se) { return Math.min(10, Math.max(0, 1 - Math.floor(Math.log10(se)))); }
+function fmtPM(v, se) {
+  if (!isFinite(se) || se <= 0) return fmtNum(v);
+  if (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3) return fmtNum(v) + " ± " + fmtNum(se, 2);
+  const d = decimalsFor(se);
+  return v.toFixed(d) + " ± " + se.toFixed(d);
+}
+function fmtTick(v, step) {
+  let d = 0;
+  while (d < 8 && Math.abs(Math.round(step * 10 ** d) - step * 10 ** d) > 1e-6) d++;
+  let s = (Math.abs(v) < step * 1e-9 ? 0 : v).toFixed(d);
+  return s.replace("-", "−");
+}
+
+/* ============================ Graph rendering ============================ */
+const measureCtx = document.createElement("canvas").getContext("2d");
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function markupSegments(str) {
+  const segs = []; let buf = "", italic = false, i = 0; const stack = [];
+  const push = () => { if (buf) { segs.push({ t: buf, it: italic, sc: stack.length ? stack[stack.length - 1] : 0 }); buf = ""; } };
+  while (i < str.length) {
+    const c = str[i];
+    if (c === "\\" && i + 1 < str.length) { buf += str[i + 1]; i += 2; continue; }
+    if (c === "*") { push(); italic = !italic; i++; continue; }
+    if ((c === "^" || c === "_") && str[i + 1] === "{") { push(); stack.push(c === "^" ? 1 : -1); i += 2; continue; }
+    if (c === "}" && stack.length) { push(); stack.pop(); i++; continue; }
+    buf += c; i++;
+  }
+  push();
+  return segs;
+}
+function markupWidth(str, fs, family) {
+  return markupSegments(str).reduce((w, s) => {
+    const size = s.sc ? fs * 0.7 : fs;
+    measureCtx.font = `${s.it ? "italic " : ""}${size}px ${family}`;
+    return w + measureCtx.measureText(s.t).width;
+  }, 0);
+}
+function markupTspans(str, fs) {
+  let shift = 0, out = "";
+  for (const s of markupSegments(str)) {
+    const target = s.sc === 1 ? -0.38 * fs : s.sc === -1 ? 0.22 * fs : 0;
+    const dy = target - shift; shift = target;
+    out += `<tspan${dy ? ` dy="${dy.toFixed(2)}"` : ""}${s.sc ? ` font-size="${(fs * 0.7).toFixed(2)}"` : ""}${s.it ? ` font-style="italic"` : ""}>${esc(s.t)}</tspan>`;
+  }
+  return out;
+}
+function niceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * e >= raw * (1 - 1e-9)) return m * e;
+  return 10 * e;
+}
+function autoAxis(lo, hi, userMin, userMax, userStep, pad = true) {
+  if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const uMin = parseFloat(userMin), uMax = parseFloat(userMax), uStep = parseFloat(userStep);
+  if (isFinite(uMin)) lo = uMin; else if (lo >= 0 && lo <= hi * 0.5) lo = 0;
+  if (isFinite(uMax)) hi = uMax; else if (hi <= 0 && hi >= lo * 0.5) hi = 0;
+  if (hi <= lo) hi = lo + 1;
+  const step = uStep > 0 ? uStep : niceStep((hi - lo) / 4);
+  let mn = isFinite(uMin) ? uMin : Math.floor(lo / step + 1e-9) * step;
+  let mx = isFinite(uMax) ? uMax : Math.ceil(hi / step - 1e-9) * step;
+  if (pad && !isFinite(uMax) && mx - hi < 0.04 * (mx - mn)) mx += step;
+  if (pad && !isFinite(uMin) && mn !== 0 && lo - mn < 0.04 * (mx - mn)) mn -= step;
+  return { min: mn, max: mx, step };
+}
+// Axis with ticks and a value→fraction mapping; log axes put major ticks on decades.
+function makeAxis(vals, userMin, userMax, userStep, minorN, log, pad = true) {
+  minorN = Math.max(0, Math.round(+minorN || 0));
+  if (!log) {
+    const a = autoAxis(Math.min(...vals), Math.max(...vals), userMin, userMax, userStep, pad);
+    const ticks = [], minor = [], n = Math.round((a.max - a.min) / a.step);
+    if (n > 200 || n < 0) ticks.push(a.min, a.max);
+    else { for (let i = 0; i <= n + 1e-9; i++) ticks.push(a.min + i * a.step); if (ticks[ticks.length - 1] < a.max - a.step * 1e-6) ticks.push(a.max); }
+    for (let i = 0; i < ticks.length - 1; i++) for (let k = 1; k <= minorN; k++) minor.push(ticks[i] + (ticks[i + 1] - ticks[i]) * k / (minorN + 1));
+    return { ...a, log: false, ticks, minor, frac: (v) => (v - a.min) / (a.max - a.min), label: (v) => fmtTick(v, a.step) };
+  }
+  const pos = vals.filter(v => v > 0);
+  const uMin = parseFloat(userMin), uMax = parseFloat(userMax);
+  let mn = uMin > 0 ? uMin : pos.length ? Math.pow(10, Math.floor(Math.log10(Math.min(...pos)) + 1e-9)) : 1;
+  let mx = uMax > mn ? uMax : pos.length ? Math.pow(10, Math.ceil(Math.log10(Math.max(...pos)) - 1e-9)) : 10;
+  if (mx <= mn) mx = mn * 10;
+  const l0 = Math.log10(mn), l1 = Math.log10(mx), ticks = [], minor = [];
+  for (let k = Math.ceil(l0 - 1e-9); k <= Math.floor(l1 + 1e-9); k++) ticks.push(Math.pow(10, k));
+  if (ticks.length < 2) { ticks.length = 0; ticks.push(mn, mx); }
+  if (minorN > 0) for (let k = Math.floor(l0) - 1; k <= Math.ceil(l1); k++) for (let m = 2; m <= 9; m++) { const v = m * Math.pow(10, k); if (v > mn * (1 + 1e-9) && v < mx * (1 - 1e-9)) minor.push(v); }
+  return {
+    min: mn, max: mx, step: 1, log: true, ticks, minor,
+    frac: (v) => (v > 0 ? (Math.log10(v) - l0) / (l1 - l0) : NaN),
+    label: (v) => { const k = Math.round(Math.log10(v)); return Math.abs(v - Math.pow(10, k)) < v * 1e-9 && (k < -3 || k > 4) ? `10^{${k}}`.replace("-", "−") : fmtNum(v, 4); }
+  };
+}
+// Per-data-set style, falling back to the graph-wide defaults.
+const DASHES = { solid: "", dash: "7,4", dot: "1.5,3.5", dashdot: "7,3,1.5,3" };
+function styleOf(j) {
+  const c = S.series[j] || {}, size = parseFloat(c.size);
+  return {
+    color: c.color || COLORS[j % COLORS.length],
+    shape: c.shape || SHAPES[j % SHAPES.length],
+    hollow: c.fill ? c.fill === "hollow" : !!S.fmt.hollow,
+    size: isFinite(size) ? size : +S.fmt.markerSize,
+    line: c.line || "solid"
+  };
+}
+function markerPath(shape, x, y, r, color, hollow, sw, tip) {
+  const m = markerShape(shape, x, y, r, color, hollow, sw);
+  return tip ? `<g class="pt"><title>${esc(tip)}</title>${m}</g>` : m;
+}
+function markerShape(shape, x, y, r, color, hollow, sw) {
+  const fill = hollow ? "#fff" : color, st = `fill="${fill}" stroke="${color}" stroke-width="${hollow ? sw : 0.5}"`;
+  const f = (v) => v.toFixed(2);
+  switch (shape) {
+    case "none": return "";
+    case "cross": { const a = r * 0.95, w = Math.max(1.2, r / 2.5); return `<path d="M${f(x - a)},${f(y - a)}L${f(x + a)},${f(y + a)}M${f(x - a)},${f(y + a)}L${f(x + a)},${f(y - a)}" stroke="${color}" stroke-width="${f(w)}" fill="none"/>`; }
+    case "plus": { const a = r * 1.1, w = Math.max(1.2, r / 2.5); return `<path d="M${f(x - a)},${f(y)}L${f(x + a)},${f(y)}M${f(x)},${f(y - a)}L${f(x)},${f(y + a)}" stroke="${color}" stroke-width="${f(w)}" fill="none"/>`; }
+    case "square": { const a = r * 0.9; return `<rect x="${f(x - a)}" y="${f(y - a)}" width="${f(2 * a)}" height="${f(2 * a)}" ${st}/>`; }
+    case "triangle": { const a = r * 1.2; return `<path d="M${f(x)},${f(y - a)}L${f(x + a * 0.95)},${f(y + a * 0.65)}L${f(x - a * 0.95)},${f(y + a * 0.65)}Z" ${st}/>`; }
+    case "tridown": { const a = r * 1.2; return `<path d="M${f(x)},${f(y + a)}L${f(x + a * 0.95)},${f(y - a * 0.65)}L${f(x - a * 0.95)},${f(y - a * 0.65)}Z" ${st}/>`; }
+    case "diamond": { const a = r * 1.25; return `<path d="M${f(x)},${f(y - a)}L${f(x + a)},${f(y)}L${f(x)},${f(y + a)}L${f(x - a)},${f(y)}Z" ${st}/>`; }
+    default: return `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" ${st}/>`;
+  }
+}
+function renderSVG(opts = {}) {
+  const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
+  const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55, aw = +F.axisW || 1.25;
+  const vis = DATA ? DATA.series.filter(s => S.series[s.idx].visible) : [];
+  const allX = vis.flatMap(s => s.xs.concat(s.xsEx)), allY = vis.flatMap(s => s.ys.concat(s.ysEx));
+  const pad = !F.connect;   // spectra (connected lines) get tight axes
+  const xa = makeAxis(allX, F.xMin, F.xMax, F.xStep, F.xMinor, F.xScale === "log", pad);
+  const ya = makeAxis(allY, F.yMin, F.yMax, F.yStep, F.yMinor, F.yScale === "log", pad);
+  const xt = xa.ticks, yt = ya.ticks;
+  const yLabW = Math.max(...yt.map(v => markupWidth(ya.label(v), fs, fam)));
+  const xLastW = markupWidth(xa.label(xt[xt.length - 1]), fs, fam);
+  const ml = Math.ceil(tick + 5 + yLabW + 10 + tfs * 1.05 + 8);
+  const mt = Math.ceil(fs * 0.7);
+  const mr = Math.ceil(Math.max(12, xLastW / 2 + 6));
+  const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
+  const W = ml + pw + mr, H = mt + ph + mb;
+  const X = (v) => ml + xa.frac(v) * pw;
+  const Y = (v) => mt + ph - ya.frac(v) * ph;
+  const f = (v) => v.toFixed(2);
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
+  s += `<defs><clipPath id="plotclip"><rect x="${ml}" y="${mt - 2}" width="${pw + 2}" height="${ph + 4}"/></clipPath></defs>`;
+
+  // zero line
+  if (F.zeroLine && !ya.log && ya.min < 0 && ya.max > 0)
+    s += `<line x1="${ml}" y1="${f(Y(0))}" x2="${f(ml + pw)}" y2="${f(Y(0))}" stroke="#000" stroke-width="${f(aw * 0.7)}"/>`;
+  // Tm lines
+  if (F.tmLine && S.fit) vis.forEach(ser => {
+    const tm = paramValue(FITS[ser.idx], "Tm");
+    if (tm && isFinite(tm.v) && tm.v >= xa.min && tm.v <= xa.max)
+      s += `<line x1="${f(X(tm.v))}" y1="${mt}" x2="${f(X(tm.v))}" y2="${mt + ph}" stroke="${styleOf(ser.idx).color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.8"/>`;
+  });
+  // curves
+  if (F.showCurve && MODEL) {
+    s += `<g clip-path="url(#plotclip)" fill="none" stroke-width="${+F.lineW}" stroke-linejoin="round">`;
+    vis.forEach(ser => {
+      const fit = FITS[ser.idx], st = styleOf(ser.idx);
+      if (!fit || fit.error || !(+F.lineW > 0) || st.line === "none") return;
+      let x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs);
+      if (F.curveAxis) { x0 = xa.min; x1 = xa.max; }
+      const logx = xa.log && x0 > 0;
+      let d = "", pen = false;
+      for (let i = 0; i <= 400; i++) {
+        const x = logx ? Math.pow(10, Math.log10(x0) + (Math.log10(x1) - Math.log10(x0)) * i / 400) : x0 + (x1 - x0) * i / 400;
+        const y = MODEL.fn(x, fit.p), py = Y(y);
+        if (!isFinite(y) || !isFinite(py)) { pen = false; continue; }
+        d += (pen ? "L" : "M") + f(X(x)) + "," + f(Math.max(-1e4, Math.min(1e4, py))); pen = true;
+      }
+      const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"${st.line === "dot" ? ' stroke-linecap="round"' : ""}` : "";
+      s += `<path d="${d}" stroke="${st.color}"${dash}/>`;
+    });
+    s += `</g>`;
+  }
+  // lines through the data (spectra)
+  if (F.connect && +F.lineW > 0) {
+    s += `<g clip-path="url(#plotclip)" fill="none" stroke-width="${+F.lineW}" stroke-linejoin="round">`;
+    vis.forEach(ser => {
+      const st = styleOf(ser.idx);
+      if (st.line === "none") return;
+      const idx = ser.xs.map((_, i) => i).sort((a, b) => ser.xs[a] - ser.xs[b]);
+      let d = "", pen = false;
+      for (const i of idx) {
+        const px = X(ser.xs[i]), py = Y(ser.ys[i]);
+        if (!isFinite(px) || !isFinite(py)) { pen = false; continue; }
+        d += (pen ? "L" : "M") + f(px) + "," + f(py); pen = true;
+      }
+      const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"${st.line === "dot" ? ' stroke-linecap="round"' : ""}` : "";
+      s += `<path d="${d}" stroke="${st.color}"${dash}/>`;
+    });
+    s += `</g>`;
+  }
+  // points
+  if (F.showPoints) vis.forEach(ser => {
+    const st = styleOf(ser.idx), col = st.color, shape = st.shape, r = st.size;
+    if (!(r > 0) || shape === "none") return;
+    const draw = (xs, ys, faded) => {
+      let g = `<g${faded ? ' opacity="0.3"' : ""}>`;
+      for (let i = 0; i < xs.length; i++) {
+        if (xs[i] < xa.min || xs[i] > xa.max || ys[i] < ya.min || ys[i] > ya.max) continue;
+        let tip = null;
+        if (opts.interactive) {
+          const fit = FITS[ser.idx], yf = fit && !fit.error && MODEL ? MODEL.fn(xs[i], fit.p) : NaN;
+          tip = `${ser.name}${faded ? " (excluded from fit)" : ""}\nX = ${fmtNum(xs[i], 6)}\nY = ${fmtNum(ys[i], 6)}` +
+                (isFinite(yf) ? `\nFit = ${fmtNum(yf, 5)}\nResidual = ${fmtNum(ys[i] - yf, 3)}` : "");
+        }
+        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, st.hollow, Math.max(1, r / 4), tip);
+      }
+      return g + "</g>";
+    };
+    s += draw(ser.xsEx, ser.ysEx, true) + draw(ser.xs, ser.ys, false);
+  });
+
+  // axes
+  const by = mt + ph;
+  s += `<g stroke="#000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
+  s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/>`;
+  s += `<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${f(by)}"/>`;
+  xt.forEach(v => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`; });
+  xa.minor.forEach(v => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + minorTick)}"/>`; });
+  yt.forEach(v => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`; });
+  ya.minor.forEach(v => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - minorTick)}" y2="${f(Y(v))}"/>`; });
+  s += `</g><g fill="#000">`;
+  xt.forEach(v => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${markupTspans(xa.label(v), fs)}</text>`; });
+  yt.forEach(v => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${markupTspans(ya.label(v), fs)}</text>`; });
+  // titles
+  s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.xTitle || "", tfs)}</text>`;
+  const ty = mt + ph / 2, tx = ml - tick - 5 - yLabW - 10 - tfs * 0.25;
+  s += `<text transform="translate(${f(tx)},${f(ty)}) rotate(-90)" x="0" y="0" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.yTitle || "", tfs)}</text>`;
+  s += `</g>`;
+
+  // legend
+  if (F.legend !== "off" && vis.length) {
+    const lfs = fs * 0.85, lh = lfs * 1.45, r = Math.min(+F.markerSize || 5, lfs * 0.4);
+    const items = vis.map(ser => {
+      let label = ser.name;
+      const tm = paramValue(FITS[ser.idx], "Tm");
+      if (F.legendTm && tm && isFinite(tm.v)) label += ` (*T*_{m} = ${tm.v.toFixed(1)} °C)`;
+      return { ser, label, w: markupWidth(label, lfs, fam) };
+    });
+    const sym = lfs * 2.0, lw = sym + Math.max(...items.map(i => i.w)), lhTot = lh * items.length;
+    const pad = 8;
+    let lx = F.legend.endsWith("l") ? ml + pad + 6 : ml + pw - pad - lw;
+    let ly = F.legend.startsWith("t") ? mt + pad : mt + ph - pad - lhTot;
+    s += `<g font-size="${f(lfs)}">`;
+    items.forEach((it, k) => {
+      const cy = ly + lh * k + lh / 2, st = styleOf(it.ser.idx), col = st.color, rr = Math.min(st.size || r, lfs * 0.4);
+      if (((F.showCurve && FITS[it.ser.idx] && !FITS[it.ser.idx].error) || F.connect) && +F.lineW > 0 && st.line !== "none") {
+        const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"` : "";
+        s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${col}" stroke-width="${+F.lineW}"${dash}/>`;
+      }
+      if (F.showPoints && rr > 0) s += markerPath(st.shape, lx + sym * 0.4, cy, rr, col, st.hollow, Math.max(1, rr / 4));
+      s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(it.label, lfs)}</text>`;
+    });
+    s += `</g>`;
+  }
+  s += `</svg>`;
+  return { svg: s, width: W, height: H };
+}
+async function svgToPngDataUrl(svg, w, h, scale) {
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  await img.decode();
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/png");
+}
+
+/* ============================ UI: data sets, params, results ============================ */
+function renderSeriesList() {
+  const el = $("seriesList");
+  if (!DATA || !DATA.series.length) { el.innerHTML = '<span class="hint">No data yet.</span>'; return; }
+  el.innerHTML = "";
+  DATA.series.forEach((ser, j) => {
+    const cfg = S.series[j];
+    const row = document.createElement("div"); row.className = "series-item";
+    row.innerHTML = `<input type="checkbox" ${cfg.visible ? "checked" : ""} title="Show and fit">
+      <input type="color" value="${cfg.color}" title="Colour">
+      <input type="text" value="${esc(ser.name)}" title="Name used in the legend">
+      <span class="hint">${ser.xs.length} pts</span>`;
+    const [cb, col, name] = row.querySelectorAll("input");
+    cb.onchange = () => { cfg.visible = cb.checked; refresh(true); };
+    col.oninput = () => { cfg.color = col.value; refresh(false); };
+    col.onchange = () => renderStyleList();
+    name.onchange = () => { cfg.name = name.value.trim(); refresh(false); };
+    el.appendChild(row);
+  });
+}
+const SHAPE_NAMES = { circle: "● Circle", square: "■ Square", triangle: "▲ Triangle", tridown: "▼ Triangle down", diamond: "◆ Diamond", cross: "✕ Cross", plus: "+ Plus", none: "No symbol" };
+const LINE_NAMES = { solid: "Solid", dash: "Dashed", dot: "Dotted", dashdot: "Dash-dot", none: "No curve" };
+function renderStyleList() {
+  const el = $("styleList");
+  if (!DATA || !DATA.series.length) { el.innerHTML = '<span class="hint">No data yet.</span>'; return; }
+  const opt = (map, sel) => Object.entries(map).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${v}</option>`).join("");
+  let h = `<table class="t"><tr><th></th><th>Data set</th><th>Symbol</th><th>Fill</th><th>Size</th><th>Curve</th></tr>`;
+  DATA.series.forEach((ser, j) => {
+    const st = styleOf(j), cfg = S.series[j];
+    h += `<tr data-j="${j}"><td><input type="color" data-k="color" value="${st.color}" title="Colour"></td>
+      <td>${esc(ser.name)}</td>
+      <td><select data-k="shape">${opt(SHAPE_NAMES, st.shape)}</select></td>
+      <td><select data-k="fill"><option value="filled"${st.hollow ? "" : " selected"}>Filled</option><option value="hollow"${st.hollow ? " selected" : ""}>Hollow</option></select></td>
+      <td><input type="number" data-k="size" min="0" max="20" step="0.5" value="${esc(cfg.size ?? "")}" placeholder="${+S.fmt.markerSize}" style="width:52px"></td>
+      <td><select data-k="line">${opt(LINE_NAMES, st.line)}</select></td></tr>`;
+  });
+  el.innerHTML = h + `</table><div class="hint">Blank size uses the default symbol size below.</div>`;
+  el.querySelectorAll("[data-k]").forEach(inp => {
+    const j = +inp.closest("tr").dataset.j, k = inp.dataset.k;
+    inp.oninput = () => { S.series[j][k] = inp.value; refresh(false); };
+    if (k === "color") inp.onchange = () => renderSeriesList();
+  });
+}
+function renderParamTable() {
+  const tbl = $("paramTable");
+  if (!MODEL) { tbl.innerHTML = ""; return; }
+  const first = FITS.find(f => f && !f.error);
+  let h = `<tr><th>Parameter</th><th>Value (blank = auto)</th><th>Fix</th><th class="num">Fitted${first ? "" : ""}</th></tr>`;
+  MODEL.params.forEach((name, i) => {
+    const key = MODEL.keys[i], cfg = S.params[key] || (S.params[key] = { value: "", fixed: false });
+    h += `<tr><td>${esc(name)}</td><td><input type="text" data-k="${key}" value="${esc(cfg.value)}" placeholder="auto"></td>
+      <td><input type="checkbox" data-k="${key}" ${cfg.fixed ? "checked" : ""}></td>
+      <td class="num">${first ? fmtNum(first.p[i]) : ""}</td></tr>`;
+  });
+  tbl.innerHTML = h;
+  tbl.querySelectorAll("input[type=text]").forEach(inp => inp.onchange = () => { S.params[inp.dataset.k].value = inp.value.trim().replace(",", "."); refresh(true); });
+  tbl.querySelectorAll("input[type=checkbox]").forEach(inp => inp.onchange = () => { S.params[inp.dataset.k].fixed = inp.checked; refresh(true); });
+}
+// Spectrum features: positive maximum, negative minimum, zero crossing between them, Rpn = θmax/|θmin|.
+function bands(ser) {
+  const idx = ser.xs.map((_, i) => i).sort((a, b) => ser.xs[a] - ser.xs[b]);
+  const X = idx.map(i => ser.xs[i]), Y = idx.map(i => ser.ys[i]);
+  if (!X.length) return null;
+  let iMax = 0, iMin = 0;
+  Y.forEach((y, i) => { if (y > Y[iMax]) iMax = i; if (y < Y[iMin]) iMin = i; });
+  let cross = NaN;
+  const [a, b] = iMin < iMax ? [iMin, iMax] : [iMax, iMin];
+  for (let i = a; i < b; i++) if (Y[i] * Y[i + 1] <= 0 && Y[i] !== Y[i + 1]) { cross = X[i] - Y[i] * (X[i + 1] - X[i]) / (Y[i + 1] - Y[i]); break; }
+  // a positive band must stand clearly above the noise: at least 2% of the negative band
+  const hasNeg = Y[iMin] < 0, hasPos = Y[iMax] > 0 && (!hasNeg || Y[iMax] > 0.02 * Math.abs(Y[iMin]));
+  return { xMax: X[iMax], yMax: Y[iMax], xMin: X[iMin], yMin: Y[iMin], cross: hasPos ? cross : NaN, rpn: hasPos && hasNeg ? Y[iMax] / Math.abs(Y[iMin]) : NaN, hasPos, n: X.length };
+}
+function renderBandResults(el) {
+  let h = "";
+  DATA.series.forEach((ser, j) => {
+    if (!S.series[j].visible) return;
+    const b = bands(ser);
+    h += `<div class="card"><h4><span class="swatch" style="background:${styleOf(j).color}"></span>${esc(ser.name)}</h4>`;
+    if (!b) { h += `<div class="hint">No points.</div></div>`; return; }
+    h += `<table class="t"><tr><th>Feature</th><th class="num">λ (nm)</th><th class="num">Value</th></tr>
+      <tr><td>${b.hasPos ? "Maximum (positive band)" : "Maximum (no clear positive band)"}</td><td class="num">${b.hasPos ? fmtNum(b.xMax, 5) : "—"}</td><td class="num">${fmtNum(b.yMax, 4)}</td></tr>
+      <tr><td>Minimum (negative band)</td><td class="num">${fmtNum(b.xMin, 5)}</td><td class="num">${fmtNum(b.yMin, 4)}</td></tr>
+      <tr><td>Crossover (zero)</td><td class="num">${isFinite(b.cross) ? b.cross.toFixed(1) : "—"}</td><td class="num"></td></tr>
+      <tr><td>R<sub>pn</sub> = max / |min|</td><td class="num"></td><td class="num">${isFinite(b.rpn) ? b.rpn.toFixed(3) : "—"}</td></tr></table>
+      <div class="hint" style="margin-top:4px">N = ${b.n} points. An R<sub>pn</sub> of about 0.1 or more, with a positive band near 225 nm, is typical of a collagen triple helix.</div></div>`;
+  });
+  el.innerHTML = h || "No visible data sets.";
+}
+function renderResults() {
+  const el = $("results");
+  if (DATA && DATA.series.length && !S.fit) { renderBandResults(el); return; }
+  if (!MODEL || !DATA || !DATA.series.length) { el.innerHTML = "Fit results appear here."; return; }
+  let h = "";
+  DATA.series.forEach((ser, j) => {
+    if (!S.series[j].visible) return;
+    const fit = FITS[j], col = S.series[j].color;
+    h += `<div class="card"><h4><span class="swatch" style="background:${col}"></span>${esc(ser.name)}</h4>`;
+    if (!fit) { h += `<div class="hint">No points.</div></div>`; return; }
+    if (fit.error) { h += `<div class="msg err">${esc(fit.error)}</div></div>`; return; }
+    const tm = paramValue(fit, "Tm");
+    if (tm) h += `<div class="big"><i>T</i><sub>m</sub> = ${fmtPM(tm.v, tm.se)} °C</div>`;
+    h += `<table class="t"><tr><th>Parameter</th><th class="num">Best fit</th><th class="num">Std. error</th><th class="num">95% CI</th></tr>`;
+    MODEL.params.forEach((name, i) => {
+      h += `<tr><td>${esc(name)}</td><td class="num">${fmtNum(fit.p[i], 5)}</td>`;
+      h += fit.fixed[i] ? `<td class="num" colspan="2">fixed</td></tr>` : `<td class="num">${fmtNum(fit.se[i], 3)}</td><td class="num">${fmtNum(fit.ci[i][0])} to ${fmtNum(fit.ci[i][1])}</td></tr>`;
+    });
+    h += `</table><div class="hint" style="margin-top:4px">R² = ${fit.r2.toFixed(5)} · S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} · N = ${fit.n} · df = ${fit.df} · ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " · <b>ambiguous</b> (parameters not identifiable)" : ""}</div>`;
+    if (isFinite(fit.step)) h += `<div class="hint">Step at <i>T</i><sub>m</sub> (unfolded − native baseline) = ${fmtNum(fit.step, 3)}${fit.dir ? ` · constrained to ${fit.dir === "up" ? "rise" : "fall"} on unfolding` : ""}</div>`;
+    if (fit.avoided) h += `<div class="hint">Without the constraint the fit ${fit.avoided.outside ? "puts <i>T</i><sub>m</sub> outside the data" : `has a ${fit.dir === "up" ? "falling" : "rising"} step`} (<i>T</i><sub>m</sub> = ${fmtNum(fit.avoided.tm, 4)} °C, S<sub>y.x</sub> = ${fmtNum(fit.avoided.syx, 3)}). This fit was found by scanning <i>T</i><sub>m</sub> across the data.</div>`;
+    if (fit.limit) h += `<div class="msg err">The best allowed fit lies on the constraint, not at a minimum, so <i>T</i><sub>m</sub> has no standard error. The data may not show a transition in this direction.</div>`;
+    h += `</div>`;
+  });
+  el.innerHTML = h || "No visible data sets.";
+}
+function resultsMatrix() {
+  if (!S.fit) {
+    const cols = DATA.series.filter(s => S.series[s.idx].visible && s.xs.length), B = cols.map(bands);
+    return [["Spectrum", ...cols.map(s => s.name)],
+      ["λ max (nm)", ...B.map(b => (b.hasPos ? fmtNum(b.xMax, 5) : "—"))], ["Value at max", ...B.map(b => fmtNum(b.yMax, 4))],
+      ["λ min (nm)", ...B.map(b => fmtNum(b.xMin, 5))], ["Value at min", ...B.map(b => fmtNum(b.yMin, 4))],
+      ["Crossover (nm)", ...B.map(b => (isFinite(b.cross) ? b.cross.toFixed(1) : "—"))],
+      ["Rpn", ...B.map(b => (isFinite(b.rpn) ? b.rpn.toFixed(3) : "—"))]];
+  }
+  if (!MODEL) return [["Parameter"]];
+  const cols = DATA.series.filter(s => S.series[s.idx].visible && FITS[s.idx] && !FITS[s.idx].error);
+  const rows = [["Parameter", ...cols.map(s => s.name)]];
+  MODEL.params.forEach((name, i) => {
+    const label = name.toLowerCase() === "tm" ? "Tm (°C)" : name;
+    rows.push([label, ...cols.map(s => { const f = FITS[s.idx]; return f.fixed[i] ? fmtNum(f.p[i]) + " (fixed)" : fmtPM(f.p[i], f.se[i]); })]);
+  });
+  const tmI = MODEL.keys.indexOf("tm");
+  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c && isFinite(c[0]) ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "—"; })]);
+  if (cols.some(s => isFinite(FITS[s.idx].step)))
+    rows.push(["Step at Tm (unfolded − native)", ...cols.map(s => { const f = FITS[s.idx]; return fmtNum(f.step, 3) + (f.dir ? (f.dir === "up" ? " (constrained ≥ 0)" : " (constrained ≤ 0)") : ""); })]);
+  rows.push(["R²", ...cols.map(s => FITS[s.idx].r2.toFixed(4))]);
+  rows.push(["Sy.x", ...cols.map(s => fmtNum(FITS[s.idx].syx, 3))]);
+  rows.push(["N", ...cols.map(s => String(FITS[s.idx].n))]);
+  return rows;
+}
+
+/* ============================ Refresh cycle ============================ */
+function refresh(refit) {
+  try { buildData(); } catch (e) { DATA = null; }
+  if (refit) {
+    if (!S.fit) { MODEL = null; $("eqMsg").className = "msg"; $("eqMsg").textContent = "Fitting is off: the data are plotted as they are."; }
+    else try { MODEL = compileModel(S.eqText); $("eqMsg").className = "msg"; $("eqMsg").textContent = "Parameters: " + MODEL.params.join(", "); }
+    catch (e) { MODEL = null; $("eqMsg").className = "msg err"; $("eqMsg").textContent = e.message; }
+    $("modelBox").style.opacity = S.fit ? "" : "0.45";
+    const canStep = stepSupported(MODEL);
+    $("stepDir").disabled = !canStep;
+    $("stepHint").innerHTML = canStep
+      ? "Holds the step between the unfolded and native baselines at <i>T</i><sub>m</sub> (CDU − CDN) to one sign, and keeps <i>T</i><sub>m</sub> inside the data. Use it when baseline drift is as large as the transition, so the fit could otherwise settle on the wrong feature."
+      : "Needs an equation that defines Tm, CDN and CDU, like the melting presets.";
+    runFits();
+    renderSeriesList();
+    renderStyleList();
+    renderParamTable();
+    renderResults();
+  }
+  $("preview").innerHTML = renderSVG({ interactive: true }).svg;
+  const errs = FITS.filter(f => f && f.error).length, ok = FITS.filter(f => f && !f.error);
+  if (!DATA || !DATA.series.length) setStatus("Paste data in the Data tab, or load the example.");
+  else if (!S.fit) {
+    const parts = DATA.series.filter(s => S.series[s.idx].visible && s.xs.length).map(s => {
+      const b = bands(s);
+      return `${s.name}: ${b.hasPos ? "max " + fmtNum(b.xMax, 4) + ", " : "no positive band, "}min ${fmtNum(b.xMin, 4)} nm${isFinite(b.rpn) ? ", Rpn " + b.rpn.toFixed(3) : ""}`;
+    });
+    setStatus(parts.join(" · "), "ok");
+  }
+  else if (!MODEL) setStatus("Equation error — see the Model tab.", "err");
+  else if (errs) setStatus(`${errs} fit(s) failed — see Results.`, "err");
+  else if (ok.length) {
+    const tms = DATA.series.filter(s => FITS[s.idx] && !FITS[s.idx].error).map(s => paramValue(FITS[s.idx], "Tm")).filter(Boolean);
+    setStatus(tms.length ? "Tm = " + tms.map(t => fmtPM(t.v, t.se)).join(", ") + " °C" : `Fitted ${ok.length} data set(s).`, "ok");
+  }
+  store();
+}
+let refitTimer = null;
+function refreshSoon(refit) { clearTimeout(refitTimer); refitTimer = setTimeout(() => refresh(refit), 250); }
+
+/* ============================ Example data ============================ */
+function exampleData(mode = "melt") {
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const g = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
+  const fn = compileModel(PRESETS.cmp.text).fn;
+  if (mode === "spec") {   // triple helix at 4 °C (positive band ~225 nm) vs unfolded at 80 °C
+    const out = ["λ (nm)\tCMP-1 (4 °C)\tCMP-1 (80 °C)"];
+    for (let x = 190; x <= 260 + 1e-9; x += 0.5) {
+      const folded = 2.6 * g(x, 225, 7.5) - 38 * g(x, 197.5, 6.5) - 1.2 * g(x, 212, 10) + gauss() * 0.08;
+      const unfolded = -1.0 * g(x, 228, 9) - 22 * g(x, 196, 6.5) - 1.5 * g(x, 215, 10) + gauss() * 0.08;
+      out.push(`${x.toFixed(1)}\t${folded.toFixed(3)}\t${unfolded.toFixed(3)}`);
+    }
+    return out.join("\n");
+  }
+  if (mode === "uv") {     // hyperchromic transition: absorbance rises on unfolding
+    const out = ["T (°C)\tCMP-1\tCMP-2"];
+    for (let x = 10; x <= 80 + 1e-9; x += 1) {
+      const y1 = fn(x, [42.5, 0.6836, 0.0008, 0.656, 0.0005]) + gauss() * 0.002;
+      const y2 = fn(x, [33.0, 0.5936, 0.0008, 0.576, 0.0005]) + gauss() * 0.002;
+      out.push(`${x.toFixed(1)}\t${y1.toFixed(4)}\t${y2.toFixed(4)}`);
+    }
+    return out.join("\n");
+  }
+  const lines = ["T (°C)\tCMP-1\tCMP-2"];
+  for (let x = 10; x <= 60 + 1e-9; x += 1) {
+    const y1 = fn(x, [42.5, 38.75, -0.11, 16.0, -0.005]) + gauss() * 0.07;
+    const y2 = fn(x, [33.0, 36.5, -0.105, 15.2, -0.006]) + gauss() * 0.07;
+    lines.push(`${x.toFixed(1)}\t${y1.toFixed(3)}\t${y2.toFixed(3)}`);
+  }
+  return lines.join("\n");
+}
+
+/* ============================ Bind form ============================ */
+const FMT_FIELDS = ["xTitle", "yTitle", "xScale", "yScale", "xMin", "xMax", "xStep", "xMinor", "yMin", "yMax", "yStep", "yMinor", "plotW", "plotH", "fontSize", "fontFamily", "markerSize", "lineW", "axisW", "legend", "exportCm", "exportFmt"];
+const FMT_CHECKS = ["showPoints", "showCurve", "connect", "zeroLine", "curveAxis", "legendTm", "tmLine", "hollow"];
+function loadForm() {
+  $("data").value = S.dataText; $("yMult").value = S.yMult; $("xFrom").value = S.xFrom; $("xTo").value = S.xTo;
+  $("eq").value = S.eqText; $("fitOn").checked = !!S.fit; $("stepDir").value = S.stepDir || "any";
+  document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("active", b.dataset.mode === S.mode));
+  $("dataHint").textContent = (MODES[S.mode] || MODES.melt).hint;
+  document.body.classList.toggle("nofit", !S.fit);
+  const match = Object.keys(PRESETS).find(k => PRESETS[k].text.trim() === S.eqText.trim());
+  $("preset").value = match || "custom";
+  FMT_FIELDS.forEach(k => { $(k).value = S.fmt[k] ?? ""; });
+  FMT_CHECKS.forEach(k => { $(k).checked = !!S.fmt[k]; });
+}
+function applyState(obj) {
+  const mode = MODES[obj.mode] ? obj.mode : "melt";   // graphs saved before modes existed are CD melting
+  S = { ...baseState(mode), ...obj, mode, fmt: { ...modeFmt(mode), ...(obj.fmt || {}) } };
+  S.series = S.series || []; S.params = S.params || {};
+  // repair "Â°"/"Â±" left in data saved while version 1.1.2 had mis-encoded text
+  if (typeof S.dataText === "string" && /Â[°±]/.test(S.dataText)) S.dataText = S.dataText.replace(/Â([°±])/g, "$1");
+  loadForm(); refresh(true);
+}
+function switchMode(mode) {
+  if (!MODES[mode] || mode === S.mode) return;
+  MODE_STORE[S.mode] = clone(S);
+  applyState(MODE_STORE[mode] || modeDefaults(mode));
+}
+// A graph from the document opens in its own mode; the work in the current mode is kept.
+function loadGraphState(obj) {
+  const mode = MODES[obj.mode] ? obj.mode : "melt";
+  if (obj.stepDir === undefined) obj = { ...obj, stepDir: "any" };   // graphs made before 1.4 keep their unconstrained fit
+  if (mode !== S.mode) MODE_STORE[S.mode] = clone(S);
+  applyState(obj);
+}
+function initUI() {
+  const sel = $("preset");
+  sel.innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("") + `<option value="custom">Custom equation</option>`;
+  sel.onchange = () => { if (PRESETS[sel.value]) { S.eqText = PRESETS[sel.value].text; $("eq").value = S.eqText; refresh(true); } };
+  $("eq").oninput = () => {
+    S.eqText = $("eq").value;
+    const match = Object.keys(PRESETS).find(k => PRESETS[k].text.trim() === S.eqText.trim());
+    sel.value = match || "custom"; refreshSoon(true);
+  };
+  document.querySelectorAll("#modes button").forEach(b => b.onclick = () => switchMode(b.dataset.mode));
+  $("fitOn").onchange = () => { S.fit = $("fitOn").checked; document.body.classList.toggle("nofit", !S.fit); refresh(true); };
+  $("stepDir").onchange = () => { S.stepDir = $("stepDir").value; refresh(true); };
+  $("data").oninput = () => { S.dataText = $("data").value; refreshSoon(true); };
+  ["yMult", "xFrom", "xTo"].forEach(k => $(k).oninput = () => { S[k] = $(k).value; refreshSoon(true); });
+  FMT_FIELDS.forEach(k => $(k).oninput = () => { S.fmt[k] = $(k).value; refreshSoon(false); });
+  FMT_CHECKS.forEach(k => $(k).onchange = () => { S.fmt[k] = $(k).checked; refresh(false); });
+  $("btnResetFmt").onclick = () => {
+    S.fmt = modeFmt(S.mode);
+    S.series.forEach(c => { delete c.shape; delete c.fill; delete c.size; delete c.line; });
+    loadForm(); refresh(false); renderStyleList();
+  };
+
+  document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + b.dataset.tab));
+  });
+
+  $("btnFit").onclick = () => { refresh(true); };
+  $("btnExample").onclick = () => { S.dataText = exampleData(S.mode); S.series = []; $("data").value = S.dataText; refresh(true); };
+  $("btnClear").onclick = () => { S.dataText = ""; S.series = []; $("data").value = ""; refresh(true); };
+  $("btnFile").onclick = () => $("file").click();
+  $("file").onchange = async () => {
+    const f = $("file").files[0]; if (!f) return;
+    S.dataText = await f.text(); S.series = []; $("data").value = S.dataText; refresh(true); $("file").value = "";
+  };
+  $("btnCopy").onclick = async () => {
+    if (!DATA || !DATA.series.length) return;
+    const text = resultsMatrix().map(r => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    setStatus("Results copied — paste into Excel or Word.", "ok");
+  };
+  $("btnPng").onclick = async () => {
+    const { svg, width, height } = renderSVG();
+    const scale = (S.fmt.exportCm / 2.54 * (S.fmt.exportFmt === "png600" ? 600 : 300)) / width;
+    download(await svgToPngDataUrl(svg, width, height, scale), "cdfit-graph.png");
+  };
+  $("btnSvg").onclick = () => {
+    const { svg } = renderSVG();
+    download(URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), "cdfit-graph.svg");
+  };
+  $("btnInsert").onclick = () => wordAction(() => insertGraph(false), "Graph inserted.");
+  $("btnReplace").onclick = () => wordAction(() => insertGraph(true), "Graph updated.");
+  $("btnLoad").onclick = () => wordAction(loadFromSelectedGraph, "Graph loaded — edit and click “Update selected graph”.");
+  $("btnLinkedSave").onclick = () => wordAction(() => insertGraph(true), "Saved into the graph.");
+  $("btnTable").onclick =() => wordAction(insertResultsTable, "Results table inserted.");
+  $("btnImport").onclick = () => wordAction(importTable, "Data imported from the document.");
+}
+function download(url, name) { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+/* ============================ Word integration ============================ */
+async function wordAction(fn, okMsg) {
+  try { setStatus("Working…"); await fn(); setStatus(okMsg, "ok"); }
+  catch (e) { console.error(e); setStatus((e && e.message) || String(e), "err"); }
+}
+function summaryText() {
+  const parts = (DATA ? DATA.series : []).filter(s => S.series[s.idx].visible).map(s => {
+    const tm = paramValue(FITS[s.idx], "Tm");
+    if (!S.fit) { const b = bands(s); return b && isFinite(b.rpn) ? `${s.name}: Rpn = ${b.rpn.toFixed(3)}` : s.name; }
+    return tm ? `${s.name}: Tm = ${fmtPM(tm.v, tm.se)} °C` : s.name;
+  });
+  const kind = { melt: "CD melting curve fitted", spec: "CD spectrum plotted", uv: "UV melting curve fitted" }[S.mode] || "Graph made";
+  return `${kind} with CD Fit. ` + parts.join("; ");
+}
+// Plain copy of the plotted data for the picture's alt text: readable and copyable into Excel in
+// any Word, without CD Fit. Semicolon-separated because Word turns tabs in alt text into spaces
+// when it saves; keeps the decimal separator the data were pasted with.
+function dataTableText() {
+  const p = parseData(S.dataText);
+  const mult = isFinite(parseFloat(S.yMult)) ? parseFloat(S.yMult) : 1;
+  const comma = /\d,\d/.test(S.dataText) && !/\d\.\d/.test(S.dataText);
+  const num = (v) => { const s = String(Number(v.toPrecision(10))); return comma ? s.replace(".", ",") : s; };
+  const cols = p.names.map((n, j) => j).filter(j => !S.series[j] || S.series[j].visible);
+  const head = [p.xName || "X", ...cols.map(j => (S.series[j] && S.series[j].name) || p.names[j])];
+  const cell = (s) => String(s).replace(/;/g, ",");
+  const rows = p.rows.map(r => [num(r[0]), ...cols.map(j => (isFinite(r[j + 1]) ? num(r[j + 1] * mult) : ""))].join(";"));
+  const note = mult !== 1 ? `, Y values multiplied by ${mult}` : "";
+  return `DATA (columns separated by ;${note}). Copy the lines below into Excel, then Data > Text to Columns > Delimited > Semicolon.\n` +
+    [head.map(cell).join(";"), ...rows].join("\n");
+}
+async function insertGraph(replace) {
+  if (!DATA || !DATA.series.length) throw new Error("No data to plot.");
+  const { svg, width, height } = renderSVG();
+  if (S.fmt.exportFmt === "svg") {
+    if (!Office.context.requirements.isSetSupported("ImageCoercion", "1.2")) throw new Error("This version of Word cannot insert SVG — choose a PNG format.");
+    await new Promise((res, rej) => Office.context.document.setSelectedDataAsync(svg, { coercionType: Office.CoercionType.XmlSvg },
+      r => (r.status === Office.AsyncResultStatus.Succeeded ? res() : rej(r.error))));
+    return;
+  }
+  const dpi = S.fmt.exportFmt === "png600" ? 600 : 300, cm = +S.fmt.exportCm || 12;
+  const url = await svgToPngDataUrl(svg, width, height, (cm / 2.54 * dpi) / width);
+  const b64 = url.slice(url.indexOf(",") + 1);
+  const state = JSON.stringify(S);
+  const id = Math.random().toString(36).slice(2, 10);
+  await saveBackup(id, state);
+  await Word.run(async (ctx) => {
+    const sel = ctx.document.getSelection();
+    let pic;
+    if (replace) {
+      const old = sel.inlinePictures.getFirstOrNullObject();
+      old.load("altTextTitle");
+      await ctx.sync();
+      if (old.isNullObject) throw new Error("Click a graph picture in the document first.");
+      const t = old.altTextTitle || "", m = t.indexOf(GRAPH_TITLE);
+      if (m >= 0) { try { Office.context.document.settings.remove("cdfit:" + t.slice(m + GRAPH_TITLE.length).trim()); } catch (e) {} }
+      pic = old.insertInlinePictureFromBase64(b64, "Replace");
+    } else {
+      pic = sel.insertInlinePictureFromBase64(b64, "End");
+    }
+    pic.lockAspectRatio = true;
+    pic.width = cm / 2.54 * 72;
+    pic.altTextTitle = GRAPH_TITLE + id;
+    pic.altTextDescription = summaryText() + "\n\n" + dataTableText() + "\n\n---- CD Fit settings (used by the add-in) ----\n" + TAG + state;
+    await ctx.sync();
+  });
+  if (replace) { try { Office.context.document.settings.saveAsync(() => {}); } catch (e) {} }
+  if (replace) { selectedJson = state; setLinked(true); } // still selected; a new graph loads when clicked
+}
+
+/* Graph data lives in the picture itself (alt text), with a backup copy in the
+   document's add-in settings keyed by the graph id, in case Word trims long alt text. */
+const GRAPH_TITLE = "CD Fit graph #";
+function saveBackup(id, state) {
+  return new Promise((res) => {
+    try {
+      Office.context.document.settings.set("cdfit:" + id, state);
+      // a document with CD Fit graphs reopens the panel when opened, so clicking a graph always shows its data
+      Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
+      Office.context.document.settings.saveAsync(() => res());
+    } catch (e) { res(); }
+  });
+}
+// Returns the saved JSON of the selected CD Fit graph, "" for a non-CD Fit picture, or null if no picture is selected.
+async function readSelectedGraph() {
+  let title = "", desc = "", found = false;
+  await Word.run(async (ctx) => {
+    const pic = ctx.document.getSelection().inlinePictures.getFirstOrNullObject();
+    pic.load("altTextTitle,altTextDescription");
+    await ctx.sync();
+    if (pic.isNullObject) return;
+    found = true; title = pic.altTextTitle || ""; desc = pic.altTextDescription || "";
+  });
+  if (!found) return null;
+  const k = desc.indexOf(TAG);
+  if (k >= 0) { const json = desc.slice(k + TAG.length); try { JSON.parse(json); return json; } catch (e) {} }
+  const m = title.indexOf(GRAPH_TITLE);
+  if (m >= 0) { try { const v = Office.context.document.settings.get("cdfit:" + title.slice(m + GRAPH_TITLE.length).trim()); if (v) return v; } catch (e) {} }
+  return "";
+}
+async function loadFromSelectedGraph() {
+  const json = await readSelectedGraph();
+  if (json === null) throw new Error("Click a graph picture in the document first.");
+  if (!json) throw new Error("This picture was not made by CD Fit (no saved data).");
+  selectedJson = json;
+  loadGraphState(JSON.parse(json));
+  setLinked(true);
+}
+
+/* Clicking a CD Fit graph in the document shows its data here automatically.
+   selectedJson is the graph that is currently selected, so edits made in the panel
+   survive while it stays selected and are replaced when a graph is clicked again. */
+let selectedJson = null, selTimer = null, selBusy = false;
+function setLinked(on) { $("linked").classList.toggle("show", !!on); }
+function showTab(name) {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + name));
+}
+function onSelectionChanged() {
+  clearTimeout(selTimer);
+  selTimer = setTimeout(async () => {
+    if (selBusy) { onSelectionChanged(); return; }
+    selBusy = true;
+    try {
+      const json = await readSelectedGraph();
+      if (!json) { selectedJson = null; setLinked(false); return; }
+      if (json !== selectedJson) {
+        selectedJson = json;
+        loadGraphState(JSON.parse(json));
+        showTab("data");
+        setStatus("Loaded the data saved in the selected graph.", "ok");
+      }
+      setLinked(true);
+    } catch (e) { console.warn(e); }
+    finally { selBusy = false; }
+  }, 200);
+}
+let selWatching = false;
+function watchSelection() {
+  if (selWatching) return;
+  selWatching = true;
+  Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged);
+}
+async function insertResultsTable() {
+  if (!DATA || !DATA.series.length) throw new Error("Nothing to report yet.");
+  const rows = resultsMatrix();
+  if (rows[0].length < 2) throw new Error(S.fit ? "No successful fits to report." : "No spectra to report.");
+  await Word.run(async (ctx) => {
+    const para = ctx.document.getSelection().paragraphs.getLast();
+    const t = para.insertTable(rows.length, rows[0].length, "After", rows);
+    t.headerRowCount = 1;
+    t.font.size = 10;
+    await ctx.sync();
+  });
+}
+async function importTable() {
+  let text = "";
+  await Word.run(async (ctx) => {
+    const sel = ctx.document.getSelection();
+    const inside = sel.parentTableOrNullObject;
+    const within = sel.tables.getFirstOrNullObject();
+    inside.load("values"); within.load("values"); sel.load("text");
+    await ctx.sync();
+    const t = !within.isNullObject ? within : !inside.isNullObject ? inside : null;
+    text = t ? t.values.map(r => r.map(c => c.trim()).join("\t")).join("\n") : sel.text;
+  });
+  if (!text.trim()) throw new Error("Select a table (or tab-separated text) in the document first.");
+  S.dataText = text; S.series = []; $("data").value = text; refresh(true);
+}
+
+/* ============================ Self-update ============================ */
+// GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
+const APP_VERSION = "1.4.2";
+window.addEventListener("error", (e) => setStatus("Error: " + (e.message || e.error), "err"));
+window.addEventListener("unhandledrejection", (e) => setStatus("Error: " + ((e.reason && e.reason.message) || e.reason), "err"));
+
+/* ============================ Start ============================ */
+function markWord() {
+  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word · v" + APP_VERSION;
+  try { watchSelection(); onSelectionChanged(); } catch (e) { console.warn(e); }
+}
+function start(inWord) {
+  if (inWord) markWord();
+  initUI();
+  const saved = restoreStored();
+  if (saved && saved.current) { MODE_STORE = saved.others || {}; applyState(saved.current); }
+  else applyState(modeDefaults("melt"));
+}
+let started = false;
+function startOnce(inWord) { if (!started) { started = true; start(inWord); } }
+if (typeof Office !== "undefined" && Office.onReady) {
+  Office.onReady(info => {
+    const w = !!info && info.host === Office.HostType.Word;
+    if (started) { if (w) markWord(); } else startOnce(w);
+  });
+  setTimeout(() => startOnce(false), 5000); // office.js failed to initialise: run in browser mode
+} else {
+  startOnce(false);
+}
+</script>
+<script>
+"use strict";
+/* Page additions around the add-in's script: files saved through the viewer, Ask Claude, the example-data note. */
+(function () {
+  const cl = window.claude && typeof window.claude.use === "function" ? window.claude : null;
+  const use = (name) => (cl ? cl.use(name).catch(() => null) : Promise.resolve(null));
+
+  // Note while the example data is loaded
+  const examples = {};
+  const badge = $("exampleBadge");
+  const markExample = () => {
+    if (!(S.mode in examples)) examples[S.mode] = exampleData(S.mode).trim();
+    badge.hidden = (S.dataText || "").trim() !== examples[S.mode];
+  };
+  const baseRefresh = refresh;
+  refresh = function (refit) { baseRefresh(refit); markExample(); };
+  markExample();
+
+  $("btnCopyTop").onclick = () => $("btnCopy").click();
+
+  // PNG and SVG, saved through the viewer, which asks the viewer to confirm each file
+  const pngBtn = $("btnPng"), svgBtn = $("btnSvg");
+  pngBtn.hidden = svgBtn.hidden = true;
+  const fileStem = () => {
+    const names = (DATA ? DATA.series : []).filter((s) => S.series[s.idx] && S.series[s.idx].visible).map((s) => s.name);
+    const base = { melt: "CD melt", spec: "CD spectrum", uv: "UV melt" }[S.mode] || "CD Fit";
+    return (base + (names.length ? " - " + names.slice(0, 3).join(", ") : "")).replace(/[\\/:*?"<>|]+/g, "").slice(0, 80);
+  };
+  const svgToPngBlob = (svg, w, h, scale) => new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("The PNG could not be made."))), "image/png");
+    };
+    img.onerror = () => reject(new Error("The PNG could not be made."));
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  });
+  use("downloads").then((downloads) => {
+    if (!downloads) return;
+    pngBtn.hidden = svgBtn.hidden = false;
+    const gone = ["unavailable", "not_granted", "capability_disabled", "capability_removed"];
+    const save = async (filename, data) => {
+      try {
+        await downloads.save({ filename, data });
+        setStatus("Saved " + filename + ".", "ok");
+      } catch (e) {
+        const code = e && e.code;
+        if (code === "declined") return;
+        if (gone.includes(code)) { pngBtn.hidden = svgBtn.hidden = true; setStatus("Saving files is not available in this view.", "err"); return; }
+        setStatus(code === "rate_limited" ? "Another save is waiting for your answer." : "The file could not be saved.", "err");
+      }
+    };
+    pngBtn.onclick = async () => {
+      if (!DATA || !DATA.series.length) { setStatus("Add data first.", "err"); return; }
+      const { svg, width, height } = renderSVG();
+      const dpi = S.fmt.exportFmt === "png600" ? 600 : 300, cm = +S.fmt.exportCm || 12;
+      try { await save(fileStem() + ".png", await svgToPngBlob(svg, width, height, (cm / 2.54 * dpi) / width)); }
+      catch (e) { setStatus(e.message, "err"); }
+    };
+    svgBtn.onclick = () => {
+      if (!DATA || !DATA.series.length) { setStatus("Add data first.", "err"); return; }
+      save(fileStem() + ".svg", renderSVG().svg);
+    };
+  });
+
+  // Ask Claude about this fit (the viewer's own Claude, on a click)
+  const RULES = [
+    "You are helping a scientist judge a fit made in CD Fit, a tool for circular dichroism (CD) and UV melting curves and CD spectra of collagen model peptides (CMPs).",
+    "In the default CMP model the triple helix (a trimer) melts into 3 monomers with ΔH fixed at -500 kJ/mol and sloping baselines; Tm is the midpoint at the measured concentration, and REFN/DEN and REFU/DEU are the native and unfolded baselines (intercept and slope per kelvin).",
+    "Check the results against the data: baseline drift or artefacts the model cannot follow, a transition cut off at the edge of the data, poorly defined baselines, a step in the wrong direction (CD at 225 nm falls on unfolding, UV absorbance rises), residual scatter (Sy.x) larger than the point-to-point noise, parameters with huge errors.",
+    "Answer in plain text without Markdown headings, at most 150 words: a one-line verdict, then only the points that matter, each with a concrete fix using the page's controls (Data tab: Exclude X outside; Model tab: Transition direction, fixing a parameter, another preset). Do not repeat the whole results table and do not invent measurements.",
+  ].join(" ");
+  const DEFAULT_Q = "Is this fit trustworthy, and is there anything I should change?";
+  const fitContext = () => {
+    const out = ["Mode: " + (MODES[S.mode] || MODES.melt).label + "."];
+    if (S.fit && MODEL) {
+      const preset = Object.keys(PRESETS).find((k) => PRESETS[k].text.trim() === S.eqText.trim());
+      out.push("Model: " + (preset ? PRESETS[preset].label : "custom equation") + ". Equation in Prism syntax (X in the first data column):\n" + S.eqText.trim());
+      const dir = { up: "the signal must rise on unfolding", down: "the signal must fall on unfolding" }[S.stepDir];
+      out.push("Transition direction constraint: " + (dir || "none, either direction") + ".");
+      const set = Object.entries(S.params || {}).filter(([, c]) => c && (c.fixed || String(c.value || "").trim() !== ""));
+      if (set.length) out.push("Parameter settings: " + set.map(([k, c]) => k + (c.fixed ? " fixed at " : " starts at ") + c.value).join("; ") + ".");
+    } else if (S.fit) {
+      out.push("The equation has an error, so nothing was fitted.");
+    } else {
+      out.push("No model is fitted: the page reports spectrum features (maximum, minimum, zero crossing, Rpn = max/|min|).");
+    }
+    if (S.xFrom !== "" || S.xTo !== "") out.push("Only points with X from " + (S.xFrom === "" ? "the start" : S.xFrom) + " to " + (S.xTo === "" ? "the end" : S.xTo) + " are fitted; the rest are shown faded.");
+    const mult = parseFloat(S.yMult);
+    if (isFinite(mult) && mult !== 1) out.push("Y values were multiplied by " + S.yMult + ".");
+    if (DATA && DATA.series.length) {
+      out.push("Results as the page reports them (tab-separated):\n" + resultsMatrix().map((r) => r.join("\t")).join("\n"));
+      const notes = [];
+      DATA.series.forEach((s, j) => {
+        const f = FITS[j];
+        if (!f || !S.series[j] || !S.series[j].visible) return;
+        if (f.error) { notes.push(s.name + ": the fit failed (" + f.error + ")."); return; }
+        if (f.avoided) notes.push(s.name + ": without the direction constraint the fit " + (f.avoided.outside ? "puts Tm outside the data" : "has the opposite step") + " (Tm " + fmtNum(f.avoided.tm, 4) + " °C).");
+        if (f.limit) notes.push(s.name + ": the best allowed fit lies on the constraint, so Tm has no standard error.");
+        if (!f.converged) notes.push(s.name + ": the fit did not converge.");
+        if (f.ambiguous) notes.push(s.name + ": the parameters are not identifiable.");
+      });
+      if (notes.length) out.push("Warnings shown on the page:\n" + notes.join("\n"));
+      const text = S.dataText.length > 12000 ? S.dataText.slice(0, 12000) + "\n[rest of the data cut off]" : S.dataText;
+      out.push("The data as entered (first column X, then one column per data set):\n" + text);
+    }
+    return out.join("\n\n");
+  };
+  const ASK_COPY = {
+    rate_limited: "Too many requests right now. Try again in a minute.",
+    session_expired: "Sign in to Claude again, then ask again.",
+    refused: "Claude declined this request. Try a different question.",
+    empty_completion: "Claude returned no answer. Try a shorter question.",
+    prompt_too_large: "The data are too long to send. Exclude some points or columns, then ask again.",
+  };
+  const askBox = $("ask"), askBtn = $("askBtn"), stopBtn = $("askStop"), askOut = $("askOut"), askNote = $("askNote");
+  use("sample").then((sample) => {
+    if (!sample) return;
+    askBox.hidden = false;
+    let ctl = null;
+    stopBtn.onclick = () => { if (ctl) ctl.abort(); };
+    askBtn.onclick = async () => {
+      if (!DATA || !DATA.series.length) { askNote.textContent = "Add data first."; return; }
+      ctl = new AbortController();
+      askBtn.disabled = true; stopBtn.hidden = false; askNote.textContent = "";
+      askOut.textContent = "Thinking…";
+      const q = $("askQ").value.trim() || DEFAULT_Q;
+      try {
+        const { truncated } = await sample(RULES + "\n\nQuestion: " + q + "\n\n" + fitContext(), {
+          signal: ctl.signal,
+          onText: ({ text }) => { askOut.textContent = text; },
+        });
+        if (truncated) askNote.textContent = "The answer was cut short. Ask a narrower question.";
+      } catch (e) {
+        const code = e && e.code;
+        askOut.textContent = (e && e.text) || "";
+        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) {
+          askBox.hidden = true;
+          setStatus("Asking Claude is not available in this view.", "err");
+        } else if (code !== "cancelled") {
+          askNote.textContent = ASK_COPY[code] || "The answer was interrupted. Ask again.";
+        }
+      } finally {
+        askBtn.disabled = false; stopBtn.hidden = true; ctl = null;
+      }
+    };
+  });
+})();
+</script>
