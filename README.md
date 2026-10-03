@@ -2,6 +2,7 @@
 
 This add-in works inside Word, a bit like Prism. You paste temperature and ellipticity data, it fits a model (by default the **Tm of CMPs**
 trimer ⇌ 3 monomers equation), draws a Prism-style graph and puts the graph and a results table into your document.
+The same fitting also runs inside Claude as a skill (see [Use CD Fit in Claude](#use-cd-fit-in-claude)).
 
 ## Files
 
@@ -13,6 +14,37 @@ trimer ⇌ 3 monomers equation), draws a Prism-style graph and puts the graph an
 | `tools/Set-AddinUrl.ps1` | Makes `manifest.hosted.xml` for a hosted copy |
 | `catalog/cdfit.xml` | Copy of `manifest.hosted.xml` that Word reads through a shared-folder catalog |
 | `server.js`, `package.json` | Optional local HTTPS server (needs Node.js) |
+| `skill/cdfit/` | The Claude skill: `SKILL.md` and a Python port of the fitting, graph and Word round trip |
+| `skill/tests/` | Checks the port against the add-in itself (synthetic data only) |
+| `tools/install_skill.py` | Installs the skill for Claude Code and builds `dist/cdfit-skill.zip` for claude.ai |
+
+## Use CD Fit in Claude
+
+Give Claude a melting curve or a CD spectrum in a chat, pasted as columns or as a .txt, .csv, .xlsx or JASCO
+file. It returns the Tm, the graph and the results table, with the add-in's numbers. Ask for a Word file and
+the graph in it opens in the add-in for editing: click it with CD Fit open. Claude can also read and re-fit the
+CD Fit graphs that are already in a Word document.
+
+- **Claude Code** (desktop Code tab or CLI): run `py tools/install_skill.py`. It copies the skill to
+  `~/.claude/skills/cdfit` and builds the zip below. New sessions pick it up.
+- **claude.ai, for yourself**: upload `dist/cdfit-skill.zip` under **Customize → Skills → + → Create skill →
+  Upload a skill**. Code execution must be on.
+- **claude.ai, for the whole lab** (Team plan, Owner): upload the same zip under **Organization settings →
+  Plugins & skills → Add → Upload a skill**. In that page's **Policy** tab, *Cloud code execution and file
+  creation* and *Skills* must be on. The skill is then on for every member.
+
+The skill is a Python port of the fitting code in `src/taskpane.html` (`skill/cdfit/scripts/cdfit_engine.py`).
+`skill/tests/make_golden.py` runs 16 synthetic cases through the add-in itself in headless Edge or Chrome, and
+`test_parity.py` requires the same parameters (to 0.1% of their standard errors), the same errors and
+constraint flags, and the same results table, character for character. When the add-in's fitting code
+changes, make the same change in `cdfit_engine.py`, set its `ADDIN_VERSION` to the new `APP_VERSION`, then run:
+
+```
+py skill/tests/make_golden.py
+py skill/tests/test_parity.py
+py skill/tests/test_cli.py
+py tools/install_skill.py
+```
 
 ## Installing
 
@@ -71,7 +103,8 @@ Fitting can be switched on or off in any mode (**Model → Fit a model to the da
 - Levenberg–Marquardt least squares with numerical derivatives. This is the same approach Prism uses for nonlinear regression.
 - Standard errors come from the covariance matrix scaled by SSR/df. The 95% CIs are ±t(0.975, df)·SE.
 - The CMP preset reproduces your definition exactly: R = 8.31, H = −500 000 J/mol, and a strand concentration of 0.0002 M written into
-  K and P. To use a different concentration, or to fit H, edit those lines. For example, delete the `H=` line and H becomes a fitted parameter.
+  K and P. That concentration cancels out: P = e^(−a)/4 with a = H/(RT)·(T/Tm − 1), so the curve depends only on ΔH, and Tm is the
+  midpoint at whatever concentration was measured. Editing it changes nothing. To fit H, delete the `H=` line and H becomes a fitted parameter.
 - Automatic starting values: the native and unfolded baselines are fitted as lines against temperature in K over the first and last 20% of the points,
   and Tm is taken where the estimated folded fraction crosses 0.5.
 - **Transition direction** (Model tab): holds the step at the midpoint, CDU − CDN evaluated at X = Tm, to one sign, and keeps Tm inside the fitted
