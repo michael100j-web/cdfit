@@ -146,7 +146,53 @@ class CLI(unittest.TestCase):
             fh.write("\n".join(jasco))
         code, out, _ = run("fit", self.path("jasco.txt"), "--out", self.path("j1"))
         self.assertEqual(code, 0)
-        self.assertIn("CD [mdeg]: Tm = 42.588 ± 0.089 °C", out)
+        self.assertIn("jasco: Tm = 42.588 ± 0.089 °C", out)   # the CD channel, named after the file
+
+    def test_many_spectra_at_once(self):
+        """Several JASCO spectrum files in one go: one column each (CD channel only), in temperature order, a row
+        per spectrum, and θ at 225 nm against temperature written out ready for a melting fit."""
+        import math
+        g = lambda x, c, w: math.exp(-(((x - c) / w) ** 2))
+        os.makedirs(self.path("many"), exist_ok=True)
+        files = []
+        for t in (60, 4, 20, 40, 30, 50, 80):          # given out of order
+            f = 1 / (1 + math.exp((t - 42) / 3))
+            lines = ["TITLE\tCMP1", "XUNITS\tNANOMETERS", "YUNITS\tCD [mdeg]", "Y2UNITS\tHT [V]", "XYDATA"]
+            lines += [f"{x}\t{f * 4.3 * g(x, 225, 7.5) - 39 * g(x, 197.5, 6.5):.4f}\t{300 + x:.1f}" for x in range(260, 189, -1)]
+            path = self.path("many", f"CMP1_{t}C.txt")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("\n".join(lines + ["", "##### Extended Information"]))
+            files.append(path)
+        code, out, _ = run("fit", *files, "--mode", "spec", "--out", self.path("s2"))
+        self.assertEqual(code, 0)
+        names = [l.split(":")[0].strip() for l in out.splitlines() if l.startswith("  CMP1_")]
+        self.assertEqual(names, ["CMP1_4C", "CMP1_20C", "CMP1_30C", "CMP1_40C", "CMP1_50C", "CMP1_60C", "CMP1_80C"])
+        self.assertNotIn("HT", out)
+        self.assertIn("θ at 225 nm against temperature, fitted with the CMP model (ΔH −500 kJ/mol): CMP1 Tm = ", out)
+        self.assertTrue(os.path.exists(self.path("s2", "CMP1_melt_225nm.png")))
+        table = read(self.path("s2", "CMP1_spectra.tsv"), "utf-8-sig").strip().split("\n")
+        self.assertEqual(len(table), 8)
+        self.assertEqual(table[0].split("\t")[:3], ["Spectrum", "T (°C)", "λ max (nm)"])
+        self.assertEqual(table[1].split("\t")[:2], ["CMP1_4C", "4"])
+        melt = self.path("s2", "CMP1_melt_225nm.txt")
+        self.assertEqual(read(melt).split("\n")[0], "T (°C)\tCMP1")
+        code, out, _ = run("fit", melt, "--mode", "melt", "--out", self.path("s3"))
+        self.assertEqual(code, 0)
+        tm = float(out.split("Tm = ")[1].split(" ")[0])
+        self.assertAlmostEqual(tm, 42, delta=1.0)
+        with open(self.path("many", "report.docx"), "wb") as fh:
+            fh.write(b"PK")
+        code, _, err = run("fit", files[0], self.path("many", "report.docx"), "--out", self.path("s4"))
+        self.assertEqual(code, 2)
+        self.assertIn("only be fitted on its own", err)
+
+    def test_spectrum_labels(self):
+        import cdfit_spectra as SP
+        self.assertEqual(SP.label_of("CMP-1 (4 °C)"), {"value": 4.0, "celsius": True, "group": "CMP-1"})
+        self.assertEqual(SP.label_of("CMP1_20.5C"), {"value": 20.5, "celsius": True, "group": "CMP1"})
+        self.assertEqual(SP.label_of("sample 37")["value"], 37.0)
+        self.assertFalse(SP.label_of("sample 37")["celsius"])
+        self.assertIsNone(SP.label_of("blank"))
 
     def test_failed_fit_and_equation_error(self):
         with open(self.path("tiny.txt"), "w") as fh:

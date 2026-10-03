@@ -55,6 +55,12 @@ midpoint at whatever concentration was measured.
   equation (see reference.md).
 - Graph: `--xtitle`, `--ytitle` (markup `*italic*`, `^{sup}`, `_{sub}`), `--legend tr|tl|br|bl|off`,
   `--width-cm 12`, `--dpi 600`, `--formats png,svg,pdf`, `--set KEY=VALUE` for any other add-in setting.
+- Several files at once: `fit a.txt b.txt c.txt --mode spec` makes one table, one column per file, matched by
+  X and sorted naturally (4 °C before 20 °C); a JASCO export keeps only its CD channel, named after the file. In
+  spectrum mode the script also writes `<name>_spectra.tsv` (one row per spectrum: λmax, λmin, crossover, Rpn and
+  the value at `--wavelength`, default 225 nm). When the spectrum names carry temperatures ("CMP-1 20 °C",
+  "CMP1_20C"), it also writes `<name>_melt_225nm.txt` (θ at that wavelength against temperature, one column per
+  peptide), fits it with the CMP model and prints the Tm from the spectra, with its graph in `<name>_melt_225nm.png`.
 - Word documents: `fit report.docx` re-fits every CD Fit graph in the file (each picture carries its data and
   settings in its alt text). `list report.docx` lists them and `--graph 2` picks one. Combine with options to
   re-fit or restyle, and with `--docx` to get the new graphs back as a Word file.

@@ -67,32 +67,44 @@ def read_xlsx(path, sheet=None):
     return "\n".join(lines)
 
 
-def clean_instrument_text(text):
-    """JASCO exports: keep the XYDATA block, with column names from the XUNITS/YUNITS lines."""
-    lines = text.replace("\r", "").split("\n")
-    start = next((i for i, l in enumerate(lines) if l.strip().upper() == "XYDATA"), None)
-    if start is None:
-        return text
-    head = {}
-    for l in lines[:start]:
-        parts = re.split(r"[\t,;]", l, maxsplit=1)
-        if len(parts) == 2:
-            head[parts[0].strip().upper()] = parts[1].strip()
-    data = []
-    for l in lines[start + 1:]:
-        if not l.strip():
+def read_data_files(paths, sheet, mode):
+    """One or more data files as one table: each file's Y columns side by side, matched by X. A JASCO export keeps
+    only its first channel (CD), named after the file, as on the CD Fit page."""
+    import cdfit_spectra as SP
+    parsed, skipped = [], []
+    natural = lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r"([0-9]+)", os.path.basename(p))]
+    for path in sorted(paths, key=natural) if len(paths) > 1 else paths:   # CMP1_4C before CMP1_20C
+        if not os.path.exists(path):
+            raise UsageError(f"No such file: {path}")
+        ext = os.path.splitext(path)[1].lower()
+        if ext in (".docx", ".json"):
+            raise UsageError(f"{os.path.basename(path)}: a Word file or a saved state can only be fitted on its own.")
+        if ext == ".xls":
+            raise UsageError("Old .xls files are not supported: save the sheet as .xlsx or .csv.")
+        raw = read_xlsx(path, sheet) if ext in (".xlsx", ".xlsm") else read_text_file(path)
+        jasco = SP.jasco_text(raw)
+        p = E.parse_data(jasco or raw)
+        if not p["rows"] or not p["names"]:
+            skipped.append(os.path.basename(path))
             continue
-        if math.isnan(E.parse_num(re.split(r"[\t,; ]+", l.strip())[0])):
-            break
-        data.append(l)
-    names = [head.get("XUNITS") or "X"] + [head[k] for k in ("YUNITS", "Y2UNITS", "Y3UNITS") if head.get(k)]
-    return "\n".join(["\t".join(names)] + data)
+        parsed.append((os.path.splitext(os.path.basename(path))[0], p, jasco is not None, raw))
+    if skipped:
+        print("Skipped (no numbers found): " + ", ".join(skipped), file=sys.stderr)
+    if not parsed:
+        raise UsageError("No numbers found: the data need an X column and at least one Y column.")
+    if len(parsed) == 1 and not parsed[0][2]:
+        return parsed[0][3]
+    text, _ = SP.merge([(stem, p, jasco) for stem, p, jasco, _ in parsed], mode or "melt")
+    return text
 
 
-def load_sources(path, sheet=None):
-    """[(label, state, from_graph)] for a data file, a saved state or a Word file."""
-    if path == "-":
+def load_sources(paths, sheet=None, mode=None):
+    """[(label, state, from_graph)] for data files, a saved state or a Word file."""
+    if paths == ["-"]:
         return [("data", {"dataText": sys.stdin.read()}, False)]
+    if len(paths) > 1:
+        return [("data", {"dataText": read_data_files(paths, sheet, mode)}, False)]
+    path = paths[0]
     if not os.path.exists(path):
         raise UsageError(f"No such file: {path}")
     ext = os.path.splitext(path)[1].lower()
@@ -114,11 +126,7 @@ def load_sources(path, sheet=None):
         if not isinstance(st, dict) or "dataText" not in st:
             raise UsageError("The .json file is not a CD Fit state (it has no dataText).")
         return [("state", st, True)]
-    if ext in (".xlsx", ".xlsm"):
-        return [("data", {"dataText": read_xlsx(path, sheet)}, False)]
-    if ext == ".xls":
-        raise UsageError("Old .xls files are not supported: save the sheet as .xlsx or .csv.")
-    return [("data", {"dataText": clean_instrument_text(read_text_file(path))}, False)]
+    return [("data", {"dataText": read_data_files([path], sheet, mode)}, False)]
 
 
 # ============================ Options → state ============================
@@ -374,16 +382,19 @@ def print_report(session, label, files, model_line):
 # ============================ Commands ============================
 def cmd_fit(a):
     import cdfit_plot as P
+    import cdfit_spectra as SP
     import cdfit_word as W
 
-    sources = load_sources(a.source, a.sheet)
+    sources = load_sources(a.sources, a.sheet, a.mode)
     if a.graph:
         pick = {int(t) for t in a.graph.split(",") if t.strip().isdigit()}
         sources = [s for s in sources if s[0].startswith("graph") and int(s[0][5:]) in pick]
         if not sources:
             raise UsageError(f"--graph {a.graph}: no such graph (see: cdfit.py list FILE.docx)")
-    stem = "data" if a.source == "-" else os.path.splitext(os.path.basename(a.source))[0]
-    out_dir = a.out or os.path.join(os.path.dirname(os.path.abspath(a.source)) if a.source != "-" else os.getcwd(),
+    first = a.sources[0]
+    stem = ("data" if first == "-" else SP.common_stem(a.sources) if len(a.sources) > 1
+            else os.path.splitext(os.path.basename(first))[0])
+    out_dir = a.out or os.path.join(os.getcwd() if first == "-" else os.path.dirname(os.path.abspath(first)),
                                     stem + "_cdfit")
     os.makedirs(out_dir, exist_ok=True)
     formats = [f.strip().lower().lstrip(".") for f in a.formats.split(",") if f.strip()]
@@ -421,6 +432,39 @@ def cmd_fit(a):
                "notes": {s["name"]: notes_for(session, s) for s in session.visible if notes_for(session, s)},
                "table": rows, "summary": session.summary_text(),
                "files": {"graph": paths, "results_tsv": tsv, "state": state_path}}
+        extra = []
+        if session.S["mode"] == "spec":   # many spectra: one row each, and θ at the wavelength against temperature
+            v = SP.analyse(session, a.wavelength)
+            spec_tsv = os.path.join(out_dir, f"{base}_spectra.tsv")
+            with open(spec_tsv, "w", encoding="utf-8-sig", newline="\n") as fh:
+                fh.write("\n".join("\t".join(r) for r in SP.table(v)) + "\n")
+            rec["files"]["spectra_tsv"] = spec_tsv
+            rec["spectra"] = [{"name": r["name"], "label": r["label"], "bands": r["bands"], "value_at_wavelength": r["at"]}
+                              for r in v["rows"]]
+            extra.append(f"spectra table ({len(v['rows'])} spectra, one row each): {spec_tsv}")
+            if v["trend"]:
+                lam = E.fmt_num(a.wavelength, 4)
+                melt_path = os.path.join(out_dir, f"{base}_melt_{lam}nm.txt")
+                with open(melt_path, "w", encoding="utf-8") as fh:
+                    fh.write(SP.melt_table(v) + "\n")
+                rec["files"]["melt_table"] = melt_path
+                what = "temperature" if v["celsius"] else "the number in the names"
+                # fit it right away with the CMP model, as the page's spectra section does
+                unit = re.search(r"\(([^()]*)\)\s*$", session.S["fmt"].get("yTitle") or "")
+                melt = E.Session({**E.base_state("melt"), "dataText": SP.melt_table(v),
+                                  "fmt": {**E.mode_fmt("melt"), "yTitle": f"*θ*_{{{lam}}}" + (f" ({unit.group(1)})" if unit else ""),
+                                          **({} if v["celsius"] else {"xTitle": "Number in the spectrum name"})}})
+                melt_png = os.path.join(out_dir, f"{base}_melt_{lam}nm.png")
+                P.render(melt, [melt_png])
+                rec["files"]["melt_graph"] = melt_png
+                rec["spectra_fit"] = [series_report(melt, s) for s in melt.data["series"]]
+                parts = []
+                for ser in melt.visible:
+                    fit, tm = melt.fit_of(ser), melt.tm(ser)
+                    parts.append(f"{ser['name']}: fit failed ({fit['error']})" if fit and fit.get("error") else
+                                 f"{ser['name']} Tm = {E.fmt_pm(tm['v'], tm['se'])} °C" if tm else ser["name"])
+                extra.append(f"θ at {lam} nm against {what}, fitted with the CMP model (ΔH −500 kJ/mol): " + "; ".join(parts))
+                extra.append(f"  data: {melt_path}  graph: {melt_png}")
         res_json = os.path.join(out_dir, f"{base}_results.json")
         rec["files"]["results_json"] = res_json
         with open(res_json, "w", encoding="utf-8") as fh:
@@ -435,6 +479,8 @@ def cmd_fit(a):
         if not a.json:
             print_report(session, label if multi or label.startswith("graph") else "",
                          [p for p in paths] + [tsv], model_line)
+            for line in extra:
+                print("  " + line)
         if session.model_error or (session.S.get("fit") and session.fits
                                    and all(f is None or f.get("error") for f in session.fits)):
             status = 1
@@ -485,8 +531,10 @@ def build_parser():
     f = sub.add_parser("fit", help="fit data, a saved state or the CD Fit graphs in a Word file",
                        description="Fit and plot as the CD Fit add-in does. Defaults are the add-in's: CMP model "
                                    "(ΔH −500 kJ/mol), either direction for CD and rising for UV.")
-    f.add_argument("source", help="data (.txt .csv .tsv .dat .xlsx, '-' = stdin; X in the first column, one Y "
-                                  "column per sample, optional header row), a CD Fit state (.json) or a .docx")
+    f.add_argument("sources", nargs="+", metavar="source",
+                   help="data (.txt .csv .tsv .dat .xlsx, '-' = stdin; X in the first column, one Y "
+                                  "column per sample, optional header row; several files become one table, one column per "
+                                  "file), a CD Fit state (.json) or a .docx")
     g = f.add_argument_group("data")
     g.add_argument("--mode", choices=["melt", "uv", "spec"], help="CD melting (default), UV melting or CD spectrum")
     g.add_argument("--sheet", help="sheet of an .xlsx file (default: the first)")
@@ -496,6 +544,8 @@ def build_parser():
     g.add_argument("--xrange", nargs=2, metavar=("MIN", "MAX"),
                    help="fit only points with X inside; the others are drawn faded ('' leaves a side open)")
     g.add_argument("--graph", help="for a .docx: which CD Fit graphs, numbered as in `list` (default: all)")
+    g.add_argument("--wavelength", type=float, default=225.0,
+                   help="spectra: the wavelength (nm) for the table's value column and for θ against temperature (225)")
     m = f.add_argument_group("model")
     m.add_argument("--preset", choices=list(E.PRESETS), help="cmp (default), twostate (ΔH fitted) or boltz")
     m.add_argument("--equation", help="Prism-syntax equation: a file, or one string with lines separated by \\n")

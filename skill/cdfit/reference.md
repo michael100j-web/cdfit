@@ -72,6 +72,18 @@ replaced) and `on_constraint` when they apply. Spectra have `bands`: `xMax`, `yM
 
 `--json` prints the same record to stdout (a list when a .docx gave several graphs).
 
+In spectrum mode there are two more files. `<name>_spectra.tsv` has one row per spectrum: name, the number in
+the name (a temperature when followed by °C or C), λ max, value at max, λ min, value at min, crossover, Rpn and
+the value at `--wavelength` (linear interpolation; default 225 nm). `<name>_melt_<λ>nm.txt` is written when at
+least three spectra carry a number and one peptide has two or more: the value at that wavelength against the
+number, one column per peptide (the name without its number). `_results.json` then also lists the spectra and
+these paths.
+
+Several data files given together become one table: each file's Y columns side by side, matched by X (rounded to
+1e-6), files in natural order, blanks where a file has no point at that X. A file with one Y column gives a column
+named after the file; a file with several gives "file: column"; a JASCO export (an XYDATA block) gives only its
+first channel (CD), named after the file. A .docx or .json can only be fitted on its own.
+
 ## Word round trip
 
 A graph picture made by CD Fit (the add-in or this skill) has the title `CD Fit graph #<id>` and alt text in
