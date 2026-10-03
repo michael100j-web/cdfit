@@ -34,7 +34,10 @@ CD Fit graphs that are already in a Word document.
   claude.ai Artifact. It adds Save PNG/SVG (the viewer asks before saving), an optional *Ask Claude about this
   fit*, which sends the data and results to Claude on the viewer's own usage, and, below the app, the 1st and
   2nd derivatives of the CD and UV fits in one figure (as fraction unfolded, with the peak temperatures in a
-  table). Its own code is in `artifact/src`. Rebuild it with
+  table). Many files can be opened or dropped at once (one column each; JASCO exports keep the CD channel), and
+  in CD spectrum mode an *All spectra at once* section lists every spectrum and plots θ at a chosen wavelength
+  and Rpn against the temperature in the spectrum names, with the melting fit and Tm of each peptide. Its own
+  code is in `artifact/src`. Rebuild it with
   `py tools/build_artifact.py --check` and republish it with the Artifact tool (icon `chart`, capabilities
   `downloads` and `sample`).
 - **claude.ai, for the whole lab** (Team plan, Owner): upload the same zip under **Organization settings →
