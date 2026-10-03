@@ -116,16 +116,21 @@ code { font-family: var(--font-data); font-size: 12px; background: var(--sunken)
 @media (max-width: 520px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .jump { color: var(--accent); text-decoration: none; font-weight: 500; padding: 7px 4px; align-self: center; }
 .jump:hover { text-decoration: underline; }
-.deriv { margin-top: 32px; display: grid; gap: 12px; scroll-margin-top: 16px; }
-.deriv-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; border-top: 1px solid var(--border); padding-top: 18px; }
-.deriv h2 { font-size: 17px; margin: 0; font-weight: 600; text-wrap: balance; }
-.deriv-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 900px) { .deriv-body { grid-template-columns: minmax(0, 620px) minmax(300px, 1fr); } }
-.deriv-side { display: grid; gap: 10px; min-width: 0; }
-.deriv-side p { margin: 0; max-width: 65ch; }
-#derivSvgBox svg { width: 100%; height: auto; display: block; }
-#derivTable { overflow-x: auto; }
-#derivTable td:first-child { white-space: nowrap; }
+.section { margin-top: 32px; display: grid; gap: 12px; scroll-margin-top: 16px; }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; border-top: 1px solid var(--border); padding-top: 18px; }
+.section h2 { font-size: 17px; margin: 0; font-weight: 600; text-wrap: balance; }
+.section-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) {
+  .section-body { grid-template-columns: minmax(0, 620px) minmax(300px, 1fr); }
+  .section.no-figure .section-body { grid-template-columns: minmax(0, 1fr); }
+}
+.section-side { display: grid; gap: 10px; min-width: 0; }
+.section-side p { margin: 0; max-width: 65ch; }
+#derivSvgBox svg, #specSvgBox svg { width: 100%; height: auto; display: block; }
+#derivTable, #specTable { overflow-x: auto; }
+#derivTable td:first-child, #specTable td:first-child { white-space: nowrap; }
+body.dropping .paper { outline: 2px dashed var(--accent); outline-offset: 4px; }
+body.dropping::after { content: "Drop the files to load them"; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: var(--radius); font-weight: 600; z-index: 10; }
 </style>
 <header class="top">
   <div class="brand">
@@ -290,20 +295,43 @@ code { font-family: var(--font-data); font-size: 12px; background: var(--sunken)
 
 </div>
 </main>
-<section class="deriv" id="derivatives" aria-labelledby="derivTitle">
-  <div class="deriv-head">
+<section class="section" id="derivatives" aria-labelledby="derivTitle">
+  <div class="section-head">
     <h2 id="derivTitle">1st and 2nd derivatives of the CD and UV fits</h2>
     <div class="actions"><button class="needs-downloads" id="derivPng" hidden>Save PNG</button><button class="needs-downloads" id="derivSvg" hidden>Save SVG</button></div>
   </div>
-  <div class="deriv-body">
+  <div class="section-body">
     <figure class="paper"><div id="derivSvgBox"></div></figure>
-    <div class="deriv-side">
+    <div class="section-side">
       <div id="derivTable"></div>
       <p class="hint" id="derivNote"></p>
       <p class="hint">α = (Y − native baseline) / (unfolded − native baseline), from each fit. Solid lines and filled points are CD, dashed lines and open points UV. Dotted lines mark the peak of dα/dT, where d²α/dT² crosses zero; the maximum and minimum of d²α/dT² mark where the transition starts and ends. dY/dT is the derivative of the fitted signal itself, baselines included.</p>
       <p class="hint">With the CMP model (ΔH −500 kJ/mol) the peak of dα/dT lies about 1.5–2 °C above T<sub>m</sub> (α = ½), so say which one you quote.</p>
     </div>
   </div>
+</section>
+<section class="section" id="spectra" aria-labelledby="specTitle" hidden>
+  <div class="section-head">
+    <h2 id="specTitle">All spectra at once</h2>
+    <div class="actions">
+      <button id="specGradient">Colour by temperature</button>
+      <button id="specCopy">Copy table</button>
+      <button class="needs-downloads" id="specPng" hidden>Save PNG</button>
+      <button class="needs-downloads" id="specSvg" hidden>Save SVG</button>
+    </div>
+  </div>
+  <div class="section-body">
+    <figure class="paper" id="specFigure"><div id="specSvgBox"></div></figure>
+    <div class="section-side">
+      <label class="f" for="specLambda">Wavelength for θ against temperature (nm)<input type="number" id="specLambda" step="any" value="225"></label>
+      <p id="specFit"></p>
+      <p class="hint" id="specNote"></p>
+      <div class="row" id="specMeltRow" hidden><button class="primary" id="specToMelt">Fit θ against temperature in CD melting</button></div>
+      <div class="row" id="specConfirm" hidden><span class="hint">This replaces your data under CD melting.</span><button class="primary" id="specYes">Replace and fit</button><button id="specNo">Cancel</button></div>
+      <p class="hint">Each row is one spectrum. A temperature in the name (“CMP-1 20 °C”, or a file called “CMP1_20C”) puts the spectra on a temperature axis, one line per peptide.</p>
+    </div>
+  </div>
+  <div id="specTable"></div>
 </section>
 <script>
 "use strict";
@@ -1599,6 +1627,37 @@ const cdfitFiles = {
   },
 };
 
+// A name shown literally in graph markup (*italic*, ^{sup}, _{sub})
+const cdfitMarkupEscape = (s) => String(s).replace(/[\\*^_{}]/g, (c) => "\\" + c);
+
+// Fit a state that is not on screen with the add-in's own functions, then put the live page state back.
+// Results are kept per state, so typing refits only once.
+const cdfitFitState = (function () {
+  const fitted = new Map();
+  const keyOf = (st) => JSON.stringify([st.mode, st.dataText, st.eqText, st.params, st.xFrom, st.xTo, st.yMult,
+    st.stepDir, st.fit, (st.series || []).map((c) => c && [c.visible, c.name, c.color])]);
+  return function (st) {
+    const key = keyOf(st);
+    if (fitted.has(key)) return fitted.get(key);
+    const live = [S, DATA, MODEL, FITS];
+    let out = null;
+    try {
+      S = JSON.parse(JSON.stringify(st));
+      buildData();
+      MODEL = S.fit ? compileModel(S.eqText) : null;
+      runFits();
+      out = { st: S, data: DATA, model: MODEL, fits: FITS };
+    } catch (e) {
+      out = null;
+    } finally {
+      [S, DATA, MODEL, FITS] = live;
+    }
+    fitted.set(key, out);
+    if (fitted.size > 8) fitted.delete(fitted.keys().next().value);
+    return out;
+  };
+})();
+
 (function () {
   const cl = window.claude && typeof window.claude.use === "function" ? window.claude : null;
   const use = (name) => (cl ? cl.use(name).catch(() => null) : Promise.resolve(null));
@@ -1743,6 +1802,202 @@ const cdfitFiles = {
 </script>
 <script>
 "use strict";
+/* Stacked graph panels on one x axis, in the add-in's graph style, for the page's sections below the app.
+   opt = { xVals, xTitle, legendAt: "tl" | "tr", legend: [{label, color, dash, hollow}],
+           panels: [{ title, height (fraction of the graph height), axis: {min, max, step} | null, zero,
+                      lines: [{xs, ys, color, dash}], points: [{x, y, color, hollow}], vlines: [{x, color}] }] } */
+function cdfitPanels(opt) {
+  const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
+  const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55;
+  const aw = +F.axisW || 1.25, lw = +F.lineW > 0 ? +F.lineW : 2;
+  const P = opt.panels, hs = P.map((p) => Math.round(ph * (p.height || 0.6))), gap = Math.ceil(fs * 1.25);
+  const xa = makeAxis(opt.xVals, "", "", "", F.xMinor, false, !!opt.xPad);
+  const str = (v) => (v === undefined || v === null ? "" : String(v));
+  const ya = P.map((p) => {
+    const vals = p.lines.flatMap((l) => l.ys).concat(p.points.map((q) => q.y)).filter(isFinite);
+    const a = p.axis || {};
+    return makeAxis(vals.length ? vals : [0, 1], str(a.min), str(a.max), str(a.step), 1, false, true);
+  });
+  const labW = Math.max(...ya.map((ax) => Math.max(...ax.ticks.map((v) => markupWidth(ax.label(v), fs, fam)))));
+  const ml = Math.ceil(tick + 5 + labW + 10 + tfs * 1.05 + 8), mt = Math.ceil(fs * 0.7);
+  const mr = Math.ceil(Math.max(12, markupWidth(xa.label(xa.ticks[xa.ticks.length - 1]), fs, fam) / 2 + 6));
+  const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
+  const tops = [];
+  hs.forEach((h, k) => tops.push(k ? tops[k - 1] + hs[k - 1] + gap : mt));
+  const W = ml + pw + mr, H = tops[tops.length - 1] + hs[hs.length - 1] + mb;
+  const X = (v) => ml + xa.frac(v) * pw, f = (v) => v.toFixed(2);
+  const dashAttr = (d) => (d ? ` stroke-dasharray="${d}"` : "");
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/><defs>`;
+  tops.forEach((t, k) => { s += `<clipPath id="pclip${k}"><rect x="${ml}" y="${t - 2}" width="${pw + 2}" height="${hs[k] + 4}"/></clipPath>`; });
+  s += "</defs>";
+  P.forEach((p, k) => {
+    const ax = ya[k], top = tops[k], h = hs[k], by = top + h, Y = (v) => top + h - ax.frac(v) * h;
+    const last = k === P.length - 1;
+    if (p.zero && ax.min < 0 && ax.max > 0)
+      s += `<line x1="${ml}" y1="${f(Y(0))}" x2="${f(ml + pw)}" y2="${f(Y(0))}" stroke="#000000" stroke-width="${f(aw * 0.6)}" stroke-dasharray="3,3" opacity="0.55"/>`;
+    for (const v of p.vlines || []) {
+      if (v.x >= xa.min && v.x <= xa.max)
+        s += `<line x1="${f(X(v.x))}" y1="${top}" x2="${f(X(v.x))}" y2="${f(by)}" stroke="${v.color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.85"/>`;
+    }
+    s += `<g clip-path="url(#pclip${k})" fill="none" stroke-width="${lw}" stroke-linejoin="round">`;
+    for (const l of p.lines) {
+      let d = "";
+      l.xs.forEach((x, i) => {
+        const px = X(x), py = Y(l.ys[i]);
+        if (isFinite(px) && isFinite(py)) d += (d ? "L" : "M") + f(px) + "," + f(Math.max(-1e4, Math.min(1e4, py)));
+      });
+      if (d) s += `<path d="${d}" stroke="${l.color}"${dashAttr(l.dash)}/>`;
+    }
+    s += "</g>";
+    for (const q of p.points) {
+      if (!isFinite(q.x) || !isFinite(q.y) || q.x < xa.min || q.x > xa.max || q.y < ax.min || q.y > ax.max) continue;
+      const r = q.r || 2.6;
+      s += `<circle cx="${f(X(q.x))}" cy="${f(Y(q.y))}" r="${r}" fill="${q.hollow ? "#ffffff" : q.color}" stroke="${q.color}" stroke-width="${q.hollow ? 1.2 : 0.5}" opacity="${q.opacity || 0.8}"/>`;
+    }
+    s += `<g stroke="#000000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
+    s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/><line x1="${ml}" y1="${top}" x2="${ml}" y2="${f(by)}"/>`;
+    xa.ticks.forEach((v) => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`; });
+    xa.minor.forEach((v) => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + minorTick)}"/>`; });
+    ax.ticks.forEach((v) => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`; });
+    ax.minor.forEach((v) => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - minorTick)}" y2="${f(Y(v))}"/>`; });
+    s += `</g><g fill="#000000">`;
+    if (last) xa.ticks.forEach((v) => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${markupTspans(xa.label(v), fs)}</text>`; });
+    ax.ticks.forEach((v) => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${markupTspans(ax.label(v), fs)}</text>`; });
+    const tx = ml - tick - 5 - labW - 10 - tfs * 0.25;
+    s += `<text transform="translate(${f(tx)},${f(top + h / 2)}) rotate(-90)" x="0" y="0" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(p.title, tfs)}</text>`;
+    if (last) s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(opt.xTitle, tfs)}</text>`;
+    s += "</g>";
+  });
+  const items = opt.legend || [];
+  if (items.length) {
+    const lfs = fs * 0.8, lh = lfs * 1.45, sym = lfs * 2.2;   // labels are markup: escape names with cdfitMarkupEscape
+    const wide = Math.max(...items.map((it) => markupWidth(it.label, lfs, fam)));
+    const lx = opt.legendAt === "tr" ? ml + pw - 10 - sym - wide : ml + 14, ly = tops[0] + 8;
+    s += `<g font-size="${f(lfs)}">`;
+    items.forEach((it, k) => {
+      const cy = ly + lh * k + lh / 2;
+      s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${it.color}" stroke-width="${lw}"${dashAttr(it.dash)}/>`;
+      s += `<circle cx="${f(lx + sym * 0.4)}" cy="${f(cy)}" r="3" fill="${it.hollow ? "#ffffff" : it.color}" stroke="${it.color}" stroke-width="1.2"/>`;
+      s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(it.label, lfs)}</text>`;
+    });
+    s += "</g>";
+  }
+  return { svg: s + "</svg>", width: W, height: H };
+}
+</script>
+<script>
+"use strict";
+/* Open or drop several files at once: each file's data become columns of one table, matched by X.
+   JASCO exports keep only their first channel (CD), named after the file. */
+const cdfitImport = (function () {
+  async function readText(file) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    if (buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder("utf-16le").decode(buf);
+    if (buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder("utf-16be").decode(buf);
+    const utf8 = new TextDecoder("utf-8").decode(buf);
+    if (!utf8.includes("\uFFFD")) return utf8.replace(/^\uFEFF/, "");
+    try { return new TextDecoder("windows-1250").decode(buf); } catch (e) { return utf8; }
+  }
+
+  // JASCO text export: header lines, then XYDATA, then the data, then an extended-information block
+  function jasco(text) {
+    const lines = text.replace(/\r/g, "").split("\n");
+    const start = lines.findIndex((l) => l.trim().toUpperCase() === "XYDATA");
+    if (start < 0) return null;
+    const head = {};
+    for (const l of lines.slice(0, start)) {
+      const m = /^([^\t,;]+)[\t,;](.*)$/.exec(l);
+      if (m) head[m[1].trim().toUpperCase()] = m[2].trim();
+    }
+    const data = [];
+    for (const l of lines.slice(start + 1)) {
+      if (!l.trim()) continue;
+      if (isNaN(parseNum(l.trim().split(/[\t,; ]+/)[0]))) break;
+      data.push(l);
+    }
+    const names = [head.XUNITS || "X", head.YUNITS || "Y"].concat(["Y2UNITS", "Y3UNITS"].filter((k) => head[k]).map((k) => head[k]));
+    return [names.join("\t"), ...data].join("\n");
+  }
+
+  const xNameFor = (name) => {
+    if (/nanomet|^\s*λ|wavelength/i.test(name || "")) return "λ (nm)";
+    if (/temp|°c/i.test(name || "")) return "T (°C)";
+    return name && name !== "X" ? name : { spec: "λ (nm)", melt: "T (°C)", uv: "T (°C)" }[S.mode] || "X";
+  };
+
+  function merge(parsed) {
+    const cols = [], xs = new Map(), key = (x) => Math.round(x * 1e6) / 1e6;
+    for (const { file, p, onlyFirst } of parsed) {
+      const ny = onlyFirst ? Math.min(1, p.names.length) : p.names.length;
+      for (let j = 0; j < ny; j++) {
+        const map = new Map();
+        for (const r of p.rows) {
+          const v = r[j + 1];
+          if (isFinite(v)) { const k = key(r[0]); map.set(k, v); xs.set(k, r[0]); }
+        }
+        cols.push({ name: (ny === 1 ? file : file + ": " + p.names[j]).replace(/[\t\r\n]+/g, " "), map });
+      }
+    }
+    const keys = [...xs.keys()].sort((a, b) => a - b);
+    const out = [[xNameFor(parsed[0].p.xName), ...cols.map((c) => c.name)].join("\t")];
+    for (const k of keys) out.push([String(xs.get(k)), ...cols.map((c) => (c.map.has(k) ? String(c.map.get(k)) : ""))].join("\t"));
+    return { text: out.join("\n"), columns: cols.length };
+  }
+
+  async function load(files) {
+    files = [...files].filter((f) => f && f.size > 0)
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));   // 4C before 20C
+    if (!files.length) return;
+    setStatus(`Reading ${files.length} file${files.length > 1 ? "s" : ""}…`);
+    const parsed = [], skipped = [];
+    for (const f of files) {
+      try {
+        const raw = await readText(f), j = jasco(raw), p = parseData(j || raw);
+        if (!p.rows.length || !p.names.length) { skipped.push(f.name); continue; }
+        parsed.push({ file: f.name.replace(/\.[^.]+$/, ""), p, raw, onlyFirst: !!j });
+      } catch (e) { skipped.push(f.name); }
+    }
+    if (!parsed.length) { setStatus(`No numbers found in ${skipped.join(", ")}.`, "err"); return; }
+    let text, columns;
+    if (parsed.length === 1 && !parsed[0].onlyFirst) { text = parsed[0].raw; columns = parsed[0].p.names.length; }
+    else ({ text, columns } = merge(parsed));
+    S.dataText = text; S.series = []; $("data").value = text;
+    refresh(true);
+    const skip = skipped.length ? ` Skipped (no numbers): ${skipped.join(", ")}.` : "";
+    setStatus(`Loaded ${parsed.length} file${parsed.length > 1 ? "s" : ""} as ${columns} data set${columns > 1 ? "s" : ""}.${skip}`, skipped.length ? "err" : "ok");
+  }
+
+  // the Data tab's file button takes several files
+  const input = $("file");
+  input.multiple = true;
+  input.accept = ".csv,.txt,.tsv,.dat,.asc,.prn,text/plain";
+  input.onchange = async () => { const fs = [...input.files]; input.value = ""; await load(fs); };
+  $("btnFile").textContent = "Open files…";
+  const tip = document.createElement("div");
+  tip.className = "hint";
+  tip.textContent = "Open or drop several files at once: each becomes a column, matched by X. JASCO exports work.";
+  $("btnFile").closest(".row").after(tip);
+
+  // files dropped anywhere on the page
+  const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+  let depth = 0;
+  document.addEventListener("dragenter", (e) => { if (hasFiles(e)) { depth++; document.body.classList.add("dropping"); } });
+  document.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; document.body.classList.remove("dropping"); } });
+  document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    document.body.classList.remove("dropping");
+    load(e.dataTransfer.files);
+  });
+
+  return { load, merge, jasco };
+})();
+</script>
+<script>
+"use strict";
 /* 1st and 2nd derivatives of the CD and UV melting fits in one figure, in its own section below the app.
    Each fit is expressed as the fraction unfolded, alpha = (Y - native baseline) / (unfolded - native baseline),
    so CD (falls on unfolding) and UV (rises) share the axes. The fits come from the add-in's own functions. */
@@ -1757,32 +2012,7 @@ const cdfitDerivatives = (function () {
     return (st.dataText || "").trim() === examples[st.mode];
   };
 
-  // The melting mode that is not on screen keeps its state in MODE_STORE; fit it with the add-in's own
-  // functions, then put the live page state back. Results are kept per state, so typing refits only once.
-  const fitted = new Map();
-  const keyOf = (st) => JSON.stringify([st.mode, st.dataText, st.eqText, st.params, st.xFrom, st.xTo, st.yMult,
-    st.stepDir, st.fit, (st.series || []).map((c) => c && [c.visible, c.name, c.color])]);
-  function fitStored(st) {
-    const key = keyOf(st);
-    if (fitted.has(key)) return fitted.get(key);
-    const live = [S, DATA, MODEL, FITS];
-    let out = null;
-    try {
-      S = JSON.parse(JSON.stringify(st));
-      buildData();
-      MODEL = S.fit ? compileModel(S.eqText) : null;
-      runFits();
-      out = { st: S, data: DATA, model: MODEL, fits: FITS };
-    } catch (e) {
-      out = null;
-    } finally {
-      [S, DATA, MODEL, FITS] = live;
-    }
-    fitted.set(key, out);
-    if (fitted.size > 4) fitted.delete(fitted.keys().next().value);
-    return out;
-  }
-
+  // The melting mode that is not on screen keeps its state in MODE_STORE (fitted by cdfitFitState, page.js)
   function sources() {
     const out = [], freshPage = isExample(S);
     for (const mode of MELT_MODES) {
@@ -1792,7 +2022,7 @@ const cdfitDerivatives = (function () {
       } else {
         // a page still on its example data shows both examples; otherwise only data the viewer gave
         const st = MODE_STORE[mode] || (freshPage ? modeDefaults(mode) : null);
-        const r = st && st.fit ? fitStored(st) : null;
+        const r = st && st.fit ? cdfitFitState(st) : null;
         if (r && r.model) src = { ...r, example: isExample(r.st) };
       }
       if (src) out.push({ mode, ...src });
@@ -1844,82 +2074,26 @@ const cdfitDerivatives = (function () {
     return out;
   }
 
-  // Three panels on one temperature axis, in the add-in's graph style
+  // Three panels on one temperature axis (panels.js draws them in the add-in's graph style)
   function draw(curves) {
-    const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
-    const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55;
-    const aw = +F.axisW || 1.25, lw = +F.lineW > 0 ? +F.lineW : 2;
-    const hs = [Math.round(ph * 0.72), Math.round(ph * 0.6), Math.round(ph * 0.6)], gap = Math.ceil(fs * 1.25);
-    const xa = makeAxis(curves.flatMap((c) => [c.xs[0], c.xs[c.xs.length - 1]]), "", "", "", F.xMinor, false, false);
-    // alpha on a fixed -0.25..1.25 scale while the points fit it; dα/dT from 0 (rounding gives it tiny negatives)
     const av = curves.flatMap((c) => c.a.concat(c.pts.map((q) => q[1]))), d1v = curves.flatMap((c) => c.d1);
-    const aFixed = Math.min(...av) >= -0.25 && Math.max(...av) <= 1.25;
-    const ya = [
-      aFixed ? makeAxis(av, "-0.25", "1.25", "0.25", 1, false, true) : makeAxis(av, "", "", "", 1, false, true),
-      makeAxis(d1v, Math.min(...d1v) > -1e-6 * Math.max(...d1v) ? "0" : "", "", "", 1, false, true),
-      makeAxis(curves.flatMap((c) => c.d2), "", "", "", 1, false, true),
-    ];
-    const labW = Math.max(...ya.map((ax) => Math.max(...ax.ticks.map((v) => markupWidth(ax.label(v), fs, fam)))));
-    const ml = Math.ceil(tick + 5 + labW + 10 + tfs * 1.05 + 8), mt = Math.ceil(fs * 0.7);
-    const mr = Math.ceil(Math.max(12, markupWidth(xa.label(xa.ticks[xa.ticks.length - 1]), fs, fam) / 2 + 6));
-    const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
-    const tops = [mt, mt + hs[0] + gap, mt + hs[0] + gap + hs[1] + gap];
-    const W = ml + pw + mr, H = tops[2] + hs[2] + mb;
-    const X = (v) => ml + xa.frac(v) * pw, f = (v) => v.toFixed(2);
-    const dash = (c) => (c.mode === "uv" ? ' stroke-dasharray="7,4"' : "");
-    let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
-    s += `<rect width="${W}" height="${H}" fill="#ffffff"/><defs>`;
-    tops.forEach((t, k) => { s += `<clipPath id="dclip${k}"><rect x="${ml}" y="${t - 2}" width="${pw + 2}" height="${hs[k] + 4}"/></clipPath>`; });
-    s += "</defs>";
-    tops.forEach((top, k) => {
-      const ax = ya[k], h = hs[k], by = top + h, Y = (v) => top + h - ax.frac(v) * h;
-      if (k > 0 && ax.min < 0 && ax.max > 0)
-        s += `<line x1="${ml}" y1="${f(Y(0))}" x2="${f(ml + pw)}" y2="${f(Y(0))}" stroke="#000000" stroke-width="${f(aw * 0.6)}" stroke-dasharray="3,3" opacity="0.55"/>`;
-      if (k > 0) curves.forEach((c) => {
-        if (!c.peak.edge && c.peak.x >= xa.min && c.peak.x <= xa.max)
-          s += `<line x1="${f(X(c.peak.x))}" y1="${top}" x2="${f(X(c.peak.x))}" y2="${f(by)}" stroke="${c.color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.85"/>`;
-      });
-      s += `<g clip-path="url(#dclip${k})" fill="none" stroke-width="${lw}" stroke-linejoin="round">`;
-      curves.forEach((c) => {
-        const ys = [c.a, c.d1, c.d2][k];
-        let d = "";
-        c.xs.forEach((x, i) => {
-          const py = Y(ys[i]);
-          if (isFinite(py)) d += (d ? "L" : "M") + f(X(x)) + "," + f(Math.max(-1e4, Math.min(1e4, py)));
-        });
-        s += `<path d="${d}" stroke="${c.color}"${dash(c)}/>`;
-      });
-      s += "</g>";
-      if (k === 0) curves.forEach((c) => {
-        for (const [x, y] of c.pts) {
-          if (x < xa.min || x > xa.max || y < ax.min || y > ax.max) continue;
-          s += `<circle cx="${f(X(x))}" cy="${f(Y(y))}" r="2.6" fill="${c.mode === "uv" ? "#ffffff" : c.color}" stroke="${c.color}" stroke-width="${c.mode === "uv" ? 1.2 : 0.5}" opacity="0.75"/>`;
-        }
-      });
-      s += `<g stroke="#000000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
-      s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/><line x1="${ml}" y1="${top}" x2="${ml}" y2="${f(by)}"/>`;
-      xa.ticks.forEach((v) => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`; });
-      xa.minor.forEach((v) => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + minorTick)}"/>`; });
-      ax.ticks.forEach((v) => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`; });
-      ax.minor.forEach((v) => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - minorTick)}" y2="${f(Y(v))}"/>`; });
-      s += `</g><g fill="#000000">`;
-      if (k === 2) xa.ticks.forEach((v) => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${markupTspans(xa.label(v), fs)}</text>`; });
-      ax.ticks.forEach((v) => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${markupTspans(ax.label(v), fs)}</text>`; });
-      const tx = ml - tick - 5 - labW - 10 - tfs * 0.25;
-      s += `<text transform="translate(${f(tx)},${f(top + h / 2)}) rotate(-90)" x="0" y="0" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(TITLES[k], tfs)}</text>`;
-      if (k === 2) s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans("*T* (°C)", tfs)}</text>`;
-      s += "</g>";
+    const aFixed = Math.min(...av) >= -0.25 && Math.max(...av) <= 1.25;   // alpha on a fixed scale while the points fit it
+    const dash = (c) => (c.mode === "uv" ? "7,4" : "");
+    const line = (c, ys) => ({ xs: c.xs, ys, color: c.color, dash: dash(c) });
+    const peaks = curves.filter((c) => !c.peak.edge).map((c) => ({ x: c.peak.x, color: c.color }));
+    return cdfitPanels({
+      xVals: curves.flatMap((c) => [c.xs[0], c.xs[c.xs.length - 1]]), xTitle: "*T* (°C)", legendAt: "tl",
+      legend: curves.map((c) => ({ label: cdfitMarkupEscape(c.name) + " · " + c.tag, color: c.color, dash: dash(c), hollow: c.mode === "uv" })),
+      panels: [
+        { title: TITLES[0], height: 0.72, axis: aFixed ? { min: -0.25, max: 1.25, step: 0.25 } : null,
+          lines: curves.map((c) => line(c, c.a)),
+          points: curves.flatMap((c) => c.pts.map(([x, y]) => ({ x, y, color: c.color, hollow: c.mode === "uv", opacity: 0.75 }))) },
+        // dα/dT from 0: rounding gives it tiny negatives
+        { title: TITLES[1], height: 0.6, axis: Math.min(...d1v) > -1e-6 * Math.max(...d1v) ? { min: 0 } : null,
+          zero: true, vlines: peaks, lines: curves.map((c) => line(c, c.d1)), points: [] },
+        { title: TITLES[2], height: 0.6, zero: true, vlines: peaks, lines: curves.map((c) => line(c, c.d2)), points: [] },
+      ],
     });
-    const lfs = fs * 0.8, lh = lfs * 1.45, sym = lfs * 2.2, lx = ml + 14, ly = tops[0] + 8;
-    s += `<g font-size="${f(lfs)}">`;
-    curves.forEach((c, k) => {
-      const cy = ly + lh * k + lh / 2;
-      s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${c.color}" stroke-width="${lw}"${dash(c)}/>`;
-      s += `<circle cx="${f(lx + sym * 0.4)}" cy="${f(cy)}" r="3" fill="${c.mode === "uv" ? "#ffffff" : c.color}" stroke="${c.color}" stroke-width="1.2"/>`;
-      s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(c.name.replace(/[*^_{}\\]/g, "") + " · " + c.tag, lfs)}</text>`;
-    });
-    s += "</g></svg>";
-    return { svg: s, width: W, height: H };
   }
 
   const t2 = (v) => (isFinite(v) ? v.toFixed(2) : "—");
@@ -1975,5 +2149,212 @@ const cdfitDerivatives = (function () {
         `peak of dY/dT ${at(c.raw, t2)}, d2(alpha)/dT2 max ${at(c.onset, t1)} and min ${at(c.end, t1)}`).join("\n");
     },
   };
+})();
+</script>
+<script>
+"use strict";
+/* All spectra at once (CD spectrum mode): one table row per spectrum, θ at a chosen wavelength and Rpn against
+   the temperature read from each spectrum's name, colours by temperature, and θ(λ) against T sent to CD melting. */
+const cdfitSpectra = (function () {
+  const sec = $("spectra"), box = $("specSvgBox"), fig = $("specFigure"), tableBox = $("specTable"), note = $("specNote");
+  const lamInput = $("specLambda"), meltRow = $("specMeltRow"), confirmRow = $("specConfirm");
+  const RAMP = ["#1d4e89", "#2a8c8c", "#7fae4a", "#d39b22", "#d0612f", "#9b2226"];
+  let view = null;   // the last analysis: rows, groups, lambda, figure
+
+  // a temperature (or another number) in a spectrum's name, and the name without it
+  function labelOf(name) {
+    let m = /(-?\d+(?:[.,]\d+)?)\s*(?:°\s*C|℃|deg\s*C|C)(?![A-Za-z])/i.exec(name), celsius = !!m;
+    if (!m) {
+      const all = [...name.matchAll(/-?\d+(?:[.,]\d+)?/g)];
+      m = all.length ? all[all.length - 1] : null;
+    }
+    if (!m) return null;
+    const number = m[1] !== undefined ? m[1] : m[0];   // the °C match captures the number; the fallback is the number
+    const rest = (name.slice(0, m.index) + name.slice(m.index + m[0].length)).replace(/\(\s*\)|\[\s*\]/g, " ");
+    const group = rest.replace(/^[\s_\-–,;:()[\]]+|[\s_\-–,;:()[\]]+$/g, "").trim();
+    return { value: parseFloat(number.replace(",", ".")), celsius, group: group || "Spectra" };
+  }
+
+  function valueAt(ser, lam) {
+    const idx = ser.xs.map((_, i) => i).sort((a, b) => ser.xs[a] - ser.xs[b]);
+    for (let k = 0; k < idx.length - 1; k++) {
+      const i = idx[k], j = idx[k + 1];
+      if (ser.xs[i] <= lam && lam <= ser.xs[j]) {
+        const span = ser.xs[j] - ser.xs[i];
+        return span ? ser.ys[i] + ((lam - ser.xs[i]) / span) * (ser.ys[j] - ser.ys[i]) : ser.ys[i];
+      }
+    }
+    return NaN;
+  }
+
+  const units = () => { const m = /\(([^()]*)\)\s*$/.exec(S.fmt.yTitle || ""); return m ? " (" + m[1] + ")" : ""; };
+  const lambda = () => { const v = parseFloat(String(lamInput.value).replace(",", ".")); return isFinite(v) ? v : 225; };
+
+  function analyse() {
+    const lam = lambda(), rows = [];
+    DATA.series.forEach((ser, j) => {
+      if (!S.series[j] || !S.series[j].visible || !ser.xs.length) return;
+      rows.push({ j, name: ser.name, label: labelOf(ser.name), b: bands(ser), at: valueAt(ser, lam) });
+    });
+    const labelled = rows.filter((r) => r.label && isFinite(r.label.value));
+    const celsius = labelled.length && labelled.every((r) => r.label.celsius);
+    const groups = new Map();
+    for (const r of labelled) {
+      if (!groups.has(r.label.group)) groups.set(r.label.group, []);
+      groups.get(r.label.group).push(r);
+    }
+    for (const g of groups.values()) g.sort((a, b) => a.label.value - b.label.value);
+    const trend = labelled.length >= 3 && [...groups.values()].some((g) => new Set(g.map((r) => r.label.value)).size >= 2);
+    return { lam, rows, groups, celsius, trend, labelled: labelled.length === rows.length };
+  }
+
+  function drawTrend(v) {
+    const names = [...v.groups.keys()], colorOf = (k) => COLORS[k % COLORS.length];
+    const xs = v.rows.filter((r) => r.label).map((r) => r.label.value);
+    const series = (key) => names.map((n, k) => {
+      const g = v.groups.get(n).filter((r) => isFinite(key(r)));
+      return { xs: g.map((r) => r.label.value), ys: g.map(key), color: colorOf(k) };
+    });
+    const pts = (key) => names.flatMap((n, k) => v.groups.get(n).filter((r) => isFinite(key(r)))
+      .map((r) => ({ x: r.label.value, y: key(r), color: colorOf(k), r: 3.4, opacity: 0.95 })));
+    // θ panel: the melting fit where it worked, otherwise straight lines between the points
+    const fits = v.fitted || [], joined = series((r) => r.at);
+    const thetaLines = names.map((n, k) => (fits[k] && fits[k].xs ? { xs: fits[k].xs, ys: fits[k].ys, color: colorOf(k) } : joined[k]));
+    const tmLines = fits.map((f, k) => (f && isFinite(f.tm) ? { x: f.tm, color: colorOf(k) } : null)).filter(Boolean);
+    const label = (n, k) => cdfitMarkupEscape(n) + (fits[k] && isFinite(fits[k].tm) ? ` (*T*_{m} = ${fits[k].tm.toFixed(1)} °C)` : "");
+    return cdfitPanels({
+      xVals: xs, xPad: true, xTitle: v.celsius ? "*T* (°C)" : "Number in the spectrum name", legendAt: "tr",
+      legend: names.length > 1 || tmLines.length ? names.map((n, k) => ({ label: label(n, k), color: colorOf(k) })) : [],
+      panels: [
+        { title: `*θ* at ${fmtNum(v.lam, 4)} nm`, height: 0.7, zero: true, lines: thetaLines, points: pts((r) => r.at), vlines: tmLines },
+        { title: "R_{pn}", height: 0.55, lines: series((r) => r.b.rpn), points: pts((r) => r.b.rpn) },
+      ],
+    });
+  }
+
+  // θ at the wavelength against temperature, fitted with CD melting's model (the CMP model unless changed there)
+  function meltState(v) {
+    const st = MODE_STORE.melt ? JSON.parse(JSON.stringify(MODE_STORE.melt)) : modeDefaults("melt");
+    st.dataText = meltTable(v);
+    st.series = []; st.xFrom = ""; st.xTo = ""; st.fit = true;
+    st.fmt = { ...(st.fmt || {}), yTitle: `*θ*_{${fmtNum(v.lam, 4)}}${units()}` };
+    return st;
+  }
+  function fitTrend(v) {
+    const st = meltState(v), r = cdfitFitState(st);
+    if (!r || !r.model) return null;
+    const iTm = r.model.keys.indexOf("tm");
+    const fits = [...v.groups.keys()].map((n, k) => {
+      const ser = r.data.series[k], fit = r.fits[k];
+      if (!ser || !fit) return { name: n, error: "no points to fit" };
+      if (fit.error) return { name: n, error: fit.error };
+      const x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs), xs = [], ys = [];
+      for (let i = 0; i <= 200; i++) { const x = x0 + ((x1 - x0) * i) / 200; xs.push(x); ys.push(r.model.fn(x, fit.p)); }
+      return { name: n, xs, ys, tm: iTm >= 0 ? fit.p[iTm] : NaN, se: iTm >= 0 ? fit.se[iTm] : NaN };
+    });
+    const preset = Object.keys(PRESETS).find((k) => PRESETS[k].text.trim() === st.eqText.trim());
+    fits.model = preset === "cmp" ? "the CMP model (ΔH −500 kJ/mol)" : preset ? PRESETS[preset].label : "the equation set under CD melting";
+    return fits;
+  }
+  function fitText(v) {
+    if (!v.fitted) return "";
+    const parts = v.fitted.map((f) => (f.error ? `${f.name}: ${f.error}` : isFinite(f.tm) ? `${f.name} Tm = ${isFinite(f.se) && f.se > 0 ? fmtPM(f.tm, f.se) : fmtNum(f.tm, 4)} °C` : f.name + " fitted"));
+    return `θ at ${fmtNum(v.lam, 4)} nm against temperature, fitted with ${v.fitted.model}: ${parts.join("; ")}.`;
+  }
+
+  function tableRows(v) {
+    const head = ["Spectrum", v.celsius ? "T (°C)" : "Number in name", "λ max (nm)", "Value at max", "λ min (nm)",
+      "Value at min", "Crossover (nm)", "Rpn", `Value at ${fmtNum(v.lam, 4)} nm`];
+    const body = v.rows.map((r) => [r.name, r.label ? fmtNum(r.label.value, 4) : "—", r.b.hasPos ? fmtNum(r.b.xMax, 5) : "—",
+      fmtNum(r.b.yMax, 4), fmtNum(r.b.xMin, 5), fmtNum(r.b.yMin, 4), isFinite(r.b.cross) ? r.b.cross.toFixed(1) : "—",
+      isFinite(r.b.rpn) ? r.b.rpn.toFixed(3) : "—", fmtNum(r.at, 4)]);
+    return [head, ...body];
+  }
+
+  function update() {
+    if (S.mode !== "spec" || !DATA || !DATA.series.length) { sec.hidden = true; return; }
+    sec.hidden = false;
+    const der = $("derivatives");
+    if (sec.nextElementSibling !== der) der.parentNode.insertBefore(sec, der);   // in spectrum mode this section comes first
+    view = analyse();
+    view.fitted = view.trend ? fitTrend(view) : null;
+    view.figure = view.trend ? drawTrend(view) : null;
+    $("specFit").textContent = fitText(view);
+    fig.hidden = !view.figure;
+    box.innerHTML = view.figure ? view.figure.svg : "";
+    sec.classList.toggle("no-figure", !view.figure);
+    const rows = tableRows(view);
+    tableBox.innerHTML = `<table class="t"><thead><tr>${rows[0].map((h, i) => `<th${i ? ' class="num"' : ""}>${esc(h)}</th>`).join("")}</tr></thead><tbody>` +
+      rows.slice(1).map((r, k) => `<tr><td><span class="swatch" style="background:${styleOf(view.rows[k].j).color}"></span> ${esc(r[0])}</td>` +
+        r.slice(1).map((c) => `<td class="num">${esc(c)}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
+    const parts = [`${view.rows.length} spectr${view.rows.length === 1 ? "um" : "a"}.`];
+    if (!view.trend) parts.push("Name the spectra with their temperature (for example “CMP-1 20 °C”, or files named that way) to see θ and Rpn against temperature.");
+    else if (!view.labelled) parts.push("Spectra without a number in their name are left out of the figure.");
+    if (view.rows.length > 10) parts.push("With this many spectra, Colour by temperature helps, and the legend can be hidden in the Graph tab.");
+    note.textContent = parts.join(" ");
+    meltRow.hidden = !view.trend;
+    $("specToMelt").innerHTML = `Fit θ<sub>${esc(fmtNum(view.lam, 4))}</sub> against ${view.celsius ? "temperature" : "the name's number"} in CD melting`;
+    confirmRow.hidden = true;
+  }
+
+  function ramp(t) {
+    const n = RAMP.length - 1, i = Math.min(n - 1, Math.floor(t * n)), u = t * n - i;
+    const hex = (c) => [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16));
+    const a = hex(RAMP[i]), b = hex(RAMP[i + 1]);
+    return "#" + a.map((v, k) => Math.round(v + (b[k] - v) * u).toString(16).padStart(2, "0")).join("");
+  }
+  $("specGradient").onclick = () => {
+    if (!view || !view.rows.length) return;
+    const order = view.rows.slice().sort((a, b) => (a.label && b.label ? a.label.value - b.label.value : 0) || a.j - b.j);
+    order.forEach((r, k) => { S.series[r.j].color = ramp(order.length > 1 ? k / (order.length - 1) : 0); });
+    refresh(true);
+    setStatus(view.rows.some((r) => r.label) ? "Coloured from blue (lowest temperature) to red (highest)." : "Coloured in column order, blue to red.", "ok");
+  };
+
+  $("specCopy").onclick = async () => {
+    if (!view) return;
+    const text = tableRows(view).map((r) => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    setStatus("Spectra table copied: paste it into Excel or Word.", "ok");
+  };
+
+  const stem = () => "Spectra - " + [...(view ? view.groups.keys() : [])].slice(0, 3).join(", ").replace(/[\\/:*?"<>|]+/g, "");
+  $("specPng").onclick = async () => {
+    if (!view || !view.figure || !cdfitFiles.save) return;
+    try { await cdfitFiles.save(stem() + ".png", await cdfitFiles.pngBlob(view.figure.svg, view.figure.width, view.figure.height)); }
+    catch (e) { setStatus(e.message, "err"); }
+  };
+  $("specSvg").onclick = () => { if (view && view.figure && cdfitFiles.save) cdfitFiles.save(stem() + ".svg", view.figure.svg); };
+
+  // θ at the wavelength against temperature, one column per peptide, into CD melting (which then fits Tm)
+  function meltTable(v) {
+    const names = [...v.groups.keys()];
+    const temps = [...new Set(names.flatMap((n) => v.groups.get(n).map((r) => r.label.value)))].sort((a, b) => a - b);
+    const lines = [[v.celsius ? "T (°C)" : "X", ...names].join("\t")];
+    for (const t of temps)
+      lines.push([String(t), ...names.map((n) => { const r = v.groups.get(n).find((q) => q.label.value === t); return r && isFinite(r.at) ? String(+r.at.toPrecision(8)) : ""; })].join("\t"));
+    return lines.join("\n");
+  }
+  function sendToMelt() {
+    if (!view || !view.trend) return;
+    MODE_STORE.melt = meltState(view);   // the same state the section's fit used
+    switchMode("melt");
+    window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  $("specToMelt").onclick = () => {
+    const st = MODE_STORE.melt;
+    const own = st && (st.dataText || "").trim() && st.dataText.trim() !== exampleData("melt").trim();
+    if (own) { confirmRow.hidden = false; meltRow.hidden = true; return; }
+    sendToMelt();
+  };
+  $("specYes").onclick = () => { confirmRow.hidden = true; sendToMelt(); };
+  $("specNo").onclick = () => { confirmRow.hidden = true; meltRow.hidden = false; };
+
+  let timer = null;
+  lamInput.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(update, 250); });
+  CDFIT_AFTER_REFRESH.push(update);
+  update();
+  return { labelOf, valueAt, meltTable: () => (view && view.trend ? meltTable(view) : "") };
 })();
 </script>

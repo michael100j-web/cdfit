@@ -27,6 +27,37 @@ const cdfitFiles = {
   },
 };
 
+// A name shown literally in graph markup (*italic*, ^{sup}, _{sub})
+const cdfitMarkupEscape = (s) => String(s).replace(/[\\*^_{}]/g, (c) => "\\" + c);
+
+// Fit a state that is not on screen with the add-in's own functions, then put the live page state back.
+// Results are kept per state, so typing refits only once.
+const cdfitFitState = (function () {
+  const fitted = new Map();
+  const keyOf = (st) => JSON.stringify([st.mode, st.dataText, st.eqText, st.params, st.xFrom, st.xTo, st.yMult,
+    st.stepDir, st.fit, (st.series || []).map((c) => c && [c.visible, c.name, c.color])]);
+  return function (st) {
+    const key = keyOf(st);
+    if (fitted.has(key)) return fitted.get(key);
+    const live = [S, DATA, MODEL, FITS];
+    let out = null;
+    try {
+      S = JSON.parse(JSON.stringify(st));
+      buildData();
+      MODEL = S.fit ? compileModel(S.eqText) : null;
+      runFits();
+      out = { st: S, data: DATA, model: MODEL, fits: FITS };
+    } catch (e) {
+      out = null;
+    } finally {
+      [S, DATA, MODEL, FITS] = live;
+    }
+    fitted.set(key, out);
+    if (fitted.size > 8) fitted.delete(fitted.keys().next().value);
+    return out;
+  };
+})();
+
 (function () {
   const cl = window.claude && typeof window.claude.use === "function" ? window.claude : null;
   const use = (name) => (cl ? cl.use(name).catch(() => null) : Promise.resolve(null));

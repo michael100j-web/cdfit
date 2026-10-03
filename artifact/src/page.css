@@ -111,13 +111,18 @@ code { font-family: var(--font-data); font-size: 12px; background: var(--sunken)
 @media (max-width: 520px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .jump { color: var(--accent); text-decoration: none; font-weight: 500; padding: 7px 4px; align-self: center; }
 .jump:hover { text-decoration: underline; }
-.deriv { margin-top: 32px; display: grid; gap: 12px; scroll-margin-top: 16px; }
-.deriv-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; border-top: 1px solid var(--border); padding-top: 18px; }
-.deriv h2 { font-size: 17px; margin: 0; font-weight: 600; text-wrap: balance; }
-.deriv-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
-@media (min-width: 900px) { .deriv-body { grid-template-columns: minmax(0, 620px) minmax(300px, 1fr); } }
-.deriv-side { display: grid; gap: 10px; min-width: 0; }
-.deriv-side p { margin: 0; max-width: 65ch; }
-#derivSvgBox svg { width: 100%; height: auto; display: block; }
-#derivTable { overflow-x: auto; }
-#derivTable td:first-child { white-space: nowrap; }
+.section { margin-top: 32px; display: grid; gap: 12px; scroll-margin-top: 16px; }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; border-top: 1px solid var(--border); padding-top: 18px; }
+.section h2 { font-size: 17px; margin: 0; font-weight: 600; text-wrap: balance; }
+.section-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) {
+  .section-body { grid-template-columns: minmax(0, 620px) minmax(300px, 1fr); }
+  .section.no-figure .section-body { grid-template-columns: minmax(0, 1fr); }
+}
+.section-side { display: grid; gap: 10px; min-width: 0; }
+.section-side p { margin: 0; max-width: 65ch; }
+#derivSvgBox svg, #specSvgBox svg { width: 100%; height: auto; display: block; }
+#derivTable, #specTable { overflow-x: auto; }
+#derivTable td:first-child, #specTable td:first-child { white-space: nowrap; }
+body.dropping .paper { outline: 2px dashed var(--accent); outline-offset: 4px; }
+body.dropping::after { content: "Drop the files to load them"; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: var(--radius); font-weight: 600; z-index: 10; }

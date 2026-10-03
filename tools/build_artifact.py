@@ -12,6 +12,7 @@ Publish with the Artifact tool: icon "chart", capabilities {"downloads": true, "
 """
 import argparse
 import html
+import json
 import re
 import shutil
 import subprocess
@@ -54,20 +55,45 @@ ASK = """<section class="ask" id="ask" hidden aria-labelledby="askTitle">
 </section>
 """
 
-DERIV = """<section class="deriv" id="derivatives" aria-labelledby="derivTitle">
-  <div class="deriv-head">
+DERIV = """<section class="section" id="derivatives" aria-labelledby="derivTitle">
+  <div class="section-head">
     <h2 id="derivTitle">1st and 2nd derivatives of the CD and UV fits</h2>
     <div class="actions"><button class="needs-downloads" id="derivPng" hidden>Save PNG</button><button class="needs-downloads" id="derivSvg" hidden>Save SVG</button></div>
   </div>
-  <div class="deriv-body">
+  <div class="section-body">
     <figure class="paper"><div id="derivSvgBox"></div></figure>
-    <div class="deriv-side">
+    <div class="section-side">
       <div id="derivTable"></div>
       <p class="hint" id="derivNote"></p>
       <p class="hint">α = (Y − native baseline) / (unfolded − native baseline), from each fit. Solid lines and filled points are CD, dashed lines and open points UV. Dotted lines mark the peak of dα/dT, where d²α/dT² crosses zero; the maximum and minimum of d²α/dT² mark where the transition starts and ends. dY/dT is the derivative of the fitted signal itself, baselines included.</p>
       <p class="hint">With the CMP model (ΔH −500 kJ/mol) the peak of dα/dT lies about 1.5–2 °C above T<sub>m</sub> (α = ½), so say which one you quote.</p>
     </div>
   </div>
+</section>
+"""
+
+SPECTRA = """<section class="section" id="spectra" aria-labelledby="specTitle" hidden>
+  <div class="section-head">
+    <h2 id="specTitle">All spectra at once</h2>
+    <div class="actions">
+      <button id="specGradient">Colour by temperature</button>
+      <button id="specCopy">Copy table</button>
+      <button class="needs-downloads" id="specPng" hidden>Save PNG</button>
+      <button class="needs-downloads" id="specSvg" hidden>Save SVG</button>
+    </div>
+  </div>
+  <div class="section-body">
+    <figure class="paper" id="specFigure"><div id="specSvgBox"></div></figure>
+    <div class="section-side">
+      <label class="f" for="specLambda">Wavelength for θ against temperature (nm)<input type="number" id="specLambda" step="any" value="225"></label>
+      <p id="specFit"></p>
+      <p class="hint" id="specNote"></p>
+      <div class="row" id="specMeltRow" hidden><button class="primary" id="specToMelt">Fit θ against temperature in CD melting</button></div>
+      <div class="row" id="specConfirm" hidden><span class="hint">This replaces your data under CD melting.</span><button class="primary" id="specYes">Replace and fit</button><button id="specNo">Cancel</button></div>
+      <p class="hint">Each row is one spectrum. A temperature in the name (“CMP-1 20 °C”, or a file called “CMP1_20C”) puts the spectra on a temperature axis, one line per peptide.</p>
+    </div>
+  </div>
+  <div id="specTable"></div>
 </section>
 """
 
@@ -108,13 +134,13 @@ def build():
     body = swap(body, '<div id="status"></div>',
                 '<div id="status" role="status"></div>\n' + ASK + '</div>\n<div class="panel">', "the status line")
     k = body.index("<script>")
-    body = body[:k] + "</div>\n</main>\n" + DERIV + body[k:]
+    body = body[:k] + "</div>\n</main>\n" + DERIV + SPECTRA + body[k:]
     # drop the GitHub Pages self-update check (the page has no version.json next to it)
     a, b = cut(body, "(function checkForUpdate() {", "\n})();\n", "the self-update check")
     body = body[:a] + body[b + len("\n})();\n"):]
     css = (PARTS / "page.css").read_text(encoding="utf-8")
     scripts = "".join(f"<script>\n{(PARTS / name).read_text(encoding='utf-8')}</script>\n"
-                      for name in ("page.js", "derivatives.js"))
+                      for name in ("page.js", "panels.js", "import.js", "derivatives.js", "spectra.js"))
     page = HEAD.replace("{css}", css) + body.strip() + "\n" + scripts
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text(page, encoding="utf-8")
@@ -129,14 +155,39 @@ def check(page):
     exe = next((p for p in browsers if p and Path(p).exists()), None)
     if not exe:
         sys.exit("--check needs Microsoft Edge or Google Chrome.")
-    probe = ('<script>window.addEventListener("error", (e) => { window.__err = String(e.message); });'
-             'window.addEventListener("load", () => setTimeout(() => {'
-             'const q = (s) => document.querySelector(s), pre = document.createElement("pre"); pre.id = "probe";'
-             'pre.textContent = JSON.stringify({status: q("#status").textContent, svg: !!q("#preview svg"),'
-             'example: !q("#exampleBadge").hidden, tabs: document.querySelectorAll("nav.tabs button").length,'
-             'deriv: !!q("#derivSvgBox svg"), derivRows: [...document.querySelectorAll("#derivTable tbody tr")]'
-             '.map((r) => [...r.cells].map((c) => c.textContent.trim()).join(" | ")), error: window.__err || null});'
-             'document.body.appendChild(pre); }, 300));</script>')
+    probe = r"""<script>
+window.addEventListener("error", (e) => { window.__err = String(e.message); });
+window.addEventListener("load", () => setTimeout(async () => {
+  const q = (s) => document.querySelector(s), rows = (s) => [...document.querySelectorAll(s + " tbody tr")];
+  const out = { status: q("#status").textContent, svg: !!q("#preview svg"), example: !q("#exampleBadge").hidden,
+    tabs: document.querySelectorAll("nav.tabs button").length, deriv: !!q("#derivSvgBox svg"),
+    derivRows: rows("#derivTable").map((r) => [...r.cells].map((c) => c.textContent.trim()).join(" | ")) };
+  try {
+    switchMode("spec");
+    const g = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
+    const jascoFile = (f) => {
+      const lines = ["TITLE\tCMP1", "XUNITS\tNANOMETERS", "YUNITS\tCD [mdeg]", "Y2UNITS\tHT [V]", "XYDATA"];
+      for (let x = 260; x >= 190; x -= 1) lines.push(x + "\t" + (f * 4.3 * g(x, 225, 7.5) - 39 * g(x, 197.5, 6.5)).toFixed(4) + "\t" + (300 + x).toFixed(1));
+      return lines.concat(["", "##### Extended Information", "[Comments]"]).join("\n");
+    };
+    await cdfitImport.load([20, 40, 60].map((t, k) => new File([jascoFile(1 - k * 0.4)], "CMP1_" + t + "C.txt")));
+    out.imported = { names: DATA.series.map((s) => s.name), points: DATA.series.map((s) => s.xs.length) };
+    const temps = [4, 10, 20, 30, 35, 40, 45, 50, 60, 70, 80], frac = (t, tm) => 1 / (1 + Math.exp((t - tm) / 3));
+    const lines = [["λ (nm)"].concat(temps.map((t) => "CMP-1 " + t + " °C"), temps.map((t) => "CMP-2 " + t + " °C")).join("\t")];
+    for (let x = 190; x <= 260; x += 1)
+      lines.push([x].concat(temps.map((t) => frac(t, 42) * 4.3 * g(x, 225, 7.5) - 39 * g(x, 197.5, 6.5)),
+                            temps.map((t) => frac(t, 33) * 4.3 * g(x, 225, 7.5) - 39 * g(x, 197.5, 6.5))).join("\t"));
+    S.dataText = lines.join("\n"); S.series = []; refresh(true);
+    q("#specGradient").click();
+    out.spectra = { fit: q("#specFit").textContent, visible: !q("#spectra").hidden, rows: rows("#specTable").length, figure: !!q("#specSvgBox svg"),
+      first: q("#spectra").nextElementSibling === q("#derivatives"), colours: new Set(S.series.map((s) => s.color)).size };
+    q("#specToMelt").click();
+    out.melt = { mode: S.mode, status: q("#status").textContent, series: DATA.series.map((s) => s.name), spectraHidden: q("#spectra").hidden };
+  } catch (e) { out.flowError = String((e && e.message) || e); }
+  out.error = window.__err || null;
+  const pre = document.createElement("pre"); pre.id = "probe"; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
+}, 300));
+</script>"""
     doc = ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,'
            'initial-scale=1,viewport-fit=cover"></head><body>' + page + probe + "</body></html>")
     tmp = Path(tempfile.mkdtemp(prefix="cdfit-artifact-"))
@@ -153,9 +204,14 @@ def check(page):
         sys.exit("--check: the page did not finish loading.")
     result = html.unescape(m.group(1))
     print("check:", result)
-    if ("Tm = " not in result or '"svg":true' not in result or '"deriv":true' not in result
-            or '"error":null' not in result):
-        sys.exit("--check failed: the examples did not fit and plot.")
+    r = json.loads(result)
+    ok = (r.get("error") is None and not r.get("flowError") and r["svg"] and r["deriv"] and "Tm = " in r["status"]
+          and r["imported"]["names"] == ["CMP1_20C", "CMP1_40C", "CMP1_60C"]
+          and r["spectra"]["visible"] and r["spectra"]["rows"] == 22 and r["spectra"]["figure"] and r["spectra"]["first"]
+          and r["spectra"]["colours"] == 22 and r["spectra"]["fit"].count("Tm = ") == 2 and r["melt"]["mode"] == "melt" and "Tm = " in r["melt"]["status"]
+          and r["melt"]["series"] == ["CMP-1", "CMP-2"] and r["melt"]["spectraHidden"])
+    if not ok:
+        sys.exit("--check failed: see the values above.")
 
 
 def main():
