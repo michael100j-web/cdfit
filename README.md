@@ -21,9 +21,11 @@ The same fitting also runs inside Claude as a skill (see [Use CD Fit in Claude](
 
 ## Use CD Fit in Claude
 
-Give Claude a melting curve or a CD spectrum in a chat, pasted as columns or as a .txt, .csv, .xlsx or JASCO
-file. It returns the Tm, the graph and the results table, with the add-in's numbers. Ask for a Word file and
-the graph in it opens in the add-in for editing: click it with CD Fit open. Claude can also read and re-fit the
+Give Claude a melting curve or a CD spectrum in a chat, pasted as columns or as a .txt, .csv, .xlsx, JASCO or
+Chirascan file. It returns the Tm, the graph and the results table, with the add-in's numbers. From a Chirascan
+melting scan (a CSV with the CD at several wavelengths for each temperature), it takes the CD at 225 nm against
+temperature, or the absorbance at 225 nm for UV melting; another wavelength can be asked for. Ask for a Word
+file and the graph in it opens in the add-in for editing: click it with CD Fit open. Claude can also read and re-fit the
 CD Fit graphs that are already in a Word document.
 
 - **Claude Code** (desktop Code tab or CLI): run `py tools/install_skill.py`. It copies the skill to
@@ -34,12 +36,14 @@ CD Fit graphs that are already in a Word document.
   claude.ai Artifact. It adds Save PNG/SVG (the viewer asks before saving), an optional *Ask Claude about this
   fit*, which sends the data and results to Claude on the viewer's own usage, and, below the app, the 1st and
   2nd derivatives of the CD and UV fits in one figure (as fraction unfolded, with the peak temperatures in a
-  table). Many files can be opened or dropped at once (one column each; JASCO exports keep the CD channel), and
-  in CD spectrum mode an *All spectra at once* section lists every spectrum and plots θ at a chosen wavelength
-  and Rpn against the temperature in the spectrum names, with the melting fit and Tm of each peptide. Its own
-  code is in `artifact/src`. Rebuild it with
-  `py tools/build_artifact.py --check` and republish it with the Artifact tool (icon `chart`, capabilities
-  `downloads` and `sample`).
+  table). Many files can be opened or dropped at once (one column each; JASCO exports keep the CD channel). A
+  Chirascan CSV gives the CD at 225 nm against temperature in CD melting and the absorbance at 225 nm in UV
+  melting (the wavelength is set under the file button), and its spectra open in CD spectrum mode. In CD
+  spectrum mode an *All spectra at once* section lists every spectrum and plots θ at a chosen wavelength and Rpn
+  against the temperature in the spectrum names, with the melting fit and Tm of each peptide. Its own code is in
+  `artifact/src`. Rebuild it with `py tools/build_artifact.py --check` (which also requires the page to read
+  fabricated Chirascan, JASCO and spreadsheet files into the same tables and Tm as the skill) and republish it
+  with the Artifact tool (icon `chart`, capabilities `downloads` and `sample`).
 - **claude.ai, for the whole lab** (Team plan, Owner): upload the same zip under **Organization settings →
   Plugins & skills → Add → Upload a skill**. In that page's **Policy** tab, *Cloud code execution and file
   creation* and *Skills* must be on. The skill is then on for every member.

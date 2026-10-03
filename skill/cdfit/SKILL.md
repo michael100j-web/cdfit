@@ -1,6 +1,6 @@
 ---
 name: cdfit
-description: Fits CD and UV melting curves of collagen model peptides (Tm from the trimer ⇌ 3 monomers model) and analyses CD spectra (λmax, λmin, crossover, Rpn) exactly as the CD Fit Word add-in does, with the same model, fitter, defaults and Prism-style graph. Use whenever someone shares melting data (temperature vs ellipticity or absorbance) or a CD spectrum and wants a Tm, a fit, a graph or a results table ("fit this melt", "what's the Tm", "make a CD Fit graph"), or brings a Word document with CD Fit graphs to read, re-fit or restyle. Writes PNG/SVG/PDF graphs, results tables, and Word files whose graphs stay editable in the CD Fit add-in.
+description: Fits CD and UV melting curves of collagen model peptides (Tm from the trimer ⇌ 3 monomers model) and analyses CD spectra (λmax, λmin, crossover, Rpn) exactly as the CD Fit Word add-in does, with the same model, fitter, defaults and Prism-style graph. Use whenever someone shares melting data (temperature vs ellipticity or absorbance, including Chirascan or JASCO exports with several wavelengths) or a CD spectrum and wants a Tm, a fit, a graph or a results table ("fit this melt", "what's the Tm", "make a CD Fit graph"), or brings a Word document with CD Fit graphs to read, re-fit or restyle. Writes PNG/SVG/PDF graphs, results tables, and Word files whose graphs stay editable in the CD Fit add-in.
 ---
 
 # CD Fit
@@ -18,15 +18,31 @@ Needs Python 3 with numpy and matplotlib (openpyxl for .xlsx). Use `py` on Windo
 
 1. Get the data into a file as given: X in the first column, one Y column per sample, an optional header row
    with the names. Tabs, semicolons, commas or spaces all work, and decimal commas are fine. .txt, .csv, .tsv,
-   .dat, .xlsx and JASCO exports can be passed directly. If the data were pasted into the chat, write them to
-   a .txt file unchanged (no rounding, no reordering).
+   .dat, .xlsx, JASCO exports and Chirascan (Pro-Data) CSV exports can be passed directly, as they are. If the
+   data were pasted into the chat, write them to a .txt file unchanged (no rounding, no reordering).
 2. Fit:
    ```
    py SKILL_DIR/scripts/cdfit.py fit data.txt --mode melt
    ```
    Add `--docx` for a Word file with the graph and results table. Outputs go to `<data>_cdfit/` next to the
    data unless `--out DIR` is given (on claude.ai, use `--out /mnt/user-data/outputs`).
-3. Read the printed summary (one line per sample, then any `note:` lines) and show the user the PNG.
+3. Read the printed summary (a `read:` line when the files needed reading, one line per sample, then any
+   `note:` lines) and show the user the PNG.
+
+## Spectrometer files
+
+- **Chirascan** CSV (starts with `ProDataCSV`): the script takes the CircularDichroism block (the Absorbance block
+  with `--mode uv`) and ignores HV, Voltage, Count, SE and Temperature. A melting scan recorded at one or more
+  wavelengths gives the signal at `--wavelength` (default 225 nm) against temperature. A spectrum file is read as a
+  spectrum, named with the temperature in its remarks. Curves are named after the files.
+- **JASCO** exports: the CD channel; an export of spectra at several temperatures is read as one spectrum per
+  temperature.
+- **Spectra named with their temperatures** (several files, or one table with a column per temperature) give θ at
+  `--wavelength` against temperature, one curve per peptide, when the mode is `melt`.
+- A wavelength that was not measured is taken between two measured ones only when they are at most 5 nm apart.
+  Otherwise the script stops and lists what was measured (for example 205–285 nm every 20 nm).
+- Without `--mode`, the files choose it: spectra are read in spectrum mode and melting scans in melting mode. With
+  `--mode`, files that do not fit it are skipped, or the script stops and says which mode to use.
 
 ## Modes and defaults (the add-in's)
 
@@ -55,8 +71,10 @@ midpoint at whatever concentration was measured.
   equation (see reference.md).
 - Graph: `--xtitle`, `--ytitle` (markup `*italic*`, `^{sup}`, `_{sub}`), `--legend tr|tl|br|bl|off`,
   `--width-cm 12`, `--dpi 600`, `--formats png,svg,pdf`, `--set KEY=VALUE` for any other add-in setting.
-- Several files at once: `fit a.txt b.txt c.txt --mode spec` makes one table, one column per file, matched by
-  X and sorted naturally (4 °C before 20 °C); a JASCO export keeps only its CD channel, named after the file. In
+- `--wavelength 222`: the wavelength taken from scans and spectra (default 225 nm, the CMP maximum; use the
+  peptide's own maximum if it differs).
+- Several files at once: `fit a.csv b.csv c.csv` makes one table, one column per file, matched by X and sorted
+  naturally (4 °C before 20 °C), so several Chirascan melts give one graph with one Tm each. In
   spectrum mode the script also writes `<name>_spectra.tsv` (one row per spectrum: λmax, λmin, crossover, Rpn and
   the value at `--wavelength`, default 225 nm). When the spectrum names carry temperatures ("CMP-1 20 °C",
   "CMP1_20C"), it also writes `<name>_melt_225nm.txt` (θ at that wavelength against temperature, one column per
@@ -69,8 +87,11 @@ midpoint at whatever concentration was measured.
 
 - Per sample: Tm ± standard error in °C, the 95% CI, R² and N, as printed. Name the model ("CMP model, ΔH
   fixed at −500 kJ/mol") and the direction if constrained.
+- Say what was read when there is a `read:` line (e.g. "CD at 225 nm from the Chirascan scan"), and pass on
+  anything it skipped.
 - Pass on every `note:` line. They mean the Tm needs care: the constraint changed the answer, Tm sits on the
-  constraint with no standard error, the fit did not converge, or the parameters are not identifiable.
+  constraint with no standard error, the fit did not converge, or the parameters are not identifiable. A curve
+  with no transition in the measured range (a straight line) has no Tm: say so rather than quoting the number.
 - If a fit fails, give the message and the likely fix (a direction, an X range, or a start value).
 - Show the graph and mention any Word file. Its graph can be edited in Word: open CD Fit (Home tab), click the
   picture, change things, then press **Update selected graph**.
@@ -89,4 +110,7 @@ midpoint at whatever concentration was measured.
 - `scripts/cdfit_engine.py`: the port of the add-in's parser, model compiler, fitter and formatting.
 - `scripts/cdfit_plot.py`: the add-in's graph layout drawn with matplotlib.
 - `scripts/cdfit_word.py`: Word files with add-in-editable graphs, and reading CD Fit graphs from .docx.
+- `scripts/cdfit_files.py`: reading Chirascan, JASCO and other files, and taking one wavelength from a scan (the
+  same rules as the CD Fit page in Claude).
+- `scripts/cdfit_spectra.py`: many spectra at once (a row each, θ at a wavelength against temperature).
 - `reference.md`: equation syntax, the presets, output files, the results JSON and the saved-state format.

@@ -183,11 +183,26 @@ window.addEventListener("load", () => setTimeout(async () => {
       first: q("#spectra").nextElementSibling === q("#derivatives"), colours: new Set(S.series.map((s) => s.color)).size };
     q("#specToMelt").click();
     out.melt = { mode: S.mode, status: q("#status").textContent, series: DATA.series.map((s) => s.name), spectraHidden: q("#spectra").hidden };
+    // spectrometer files (fabricated): Chirascan scans and spectra, a JASCO table of spectra, a spreadsheet scan
+    const FILES = __FILES__, open = (names) => cdfitImport.load(names.map((n) => new File([FILES[n]], n)));
+    const tms = () => DATA.series.map((s) => { const f = FITS[s.idx], t = f && !f.error ? paramValue(f, "Tm") : null; return t ? t.v : null; });
+    const grab = () => ({ mode: S.mode, text: S.dataText, status: q("#status").textContent, yTitle: S.fmt.yTitle, tm: S.fit ? tms() : [] });
+    switchMode("melt"); await open(["CMPA_Tm.csv"]); out.chMelt = grab();
+    switchMode("uv"); await open(["CMPA_Tm.csv"]); out.chUv = grab();
+    switchMode("melt"); await open(["CMPA_CD.csv", "CMPA_CD_hot.csv"]); out.chSpec = grab();
+    switchMode("melt"); await open(["scan_sheet.csv", "cmpB_jasco.txt", "CMPA_Tm.csv"]); out.mixed = grab();
+    const li = q("#impLambda"), pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    li.value = "224"; li.dispatchEvent(new Event("input"));
+    await pause(600);   // the input waits for typing to stop, then reads the files again
+    for (let i = 0; i < 100 && /^Reading/.test(q("#status").textContent); i++) await pause(100);
+    out.at224 = grab(); out.specLambda = q("#specLambda").value;
   } catch (e) { out.flowError = String((e && e.message) || e); }
   out.error = window.__err || null;
   const pre = document.createElement("pre"); pre.id = "probe"; pre.textContent = JSON.stringify(out); document.body.appendChild(pre);
 }, 300));
 </script>"""
+    files, expect = spectrometer_files()
+    probe = probe.replace("__FILES__", json.dumps(files))
     doc = ('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,'
            'initial-scale=1,viewport-fit=cover"></head><body>' + page + probe + "</body></html>")
     tmp = Path(tempfile.mkdtemp(prefix="cdfit-artifact-"))
@@ -195,29 +210,71 @@ window.addEventListener("load", () => setTimeout(async () => {
         f = tmp / "page.html"
         f.write_text(doc, encoding="utf-8")
         cmd = [exe, "--headless=new", "--disable-gpu", "--no-first-run", f"--user-data-dir={tmp / 'p'}",
-               "--virtual-time-budget=15000", "--dump-dom", f.as_uri()]
+               "--virtual-time-budget=60000", "--dump-dom", f.as_uri()]
         dom = subprocess.run(cmd, capture_output=True, timeout=180).stdout.decode("utf-8", "replace")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     m = re.search(r'<pre id="probe">(.*?)</pre>', dom, re.S)
     if not m:
         sys.exit("--check: the page did not finish loading.")
-    result = html.unescape(m.group(1))
-    print("check:", result)
-    r = json.loads(result)
+    r = json.loads(html.unescape(m.group(1)))
+    print("check:", json.dumps({k: v for k, v in r.items() if k not in ("chMelt", "chUv", "chSpec", "mixed", "at224")},
+                               ensure_ascii=False))
     ok = (r.get("error") is None and not r.get("flowError") and r["svg"] and r["deriv"] and "Tm = " in r["status"]
           and r["imported"]["names"] == ["CMP1_20C", "CMP1_40C", "CMP1_60C"]
           and r["spectra"]["visible"] and r["spectra"]["rows"] == 22 and r["spectra"]["figure"] and r["spectra"]["first"]
           and r["spectra"]["colours"] == 22 and r["spectra"]["fit"].count("Tm = ") == 2 and r["melt"]["mode"] == "melt" and "Tm = " in r["melt"]["status"]
           and r["melt"]["series"] == ["CMP-1", "CMP-2"] and r["melt"]["spectraHidden"])
+    # the page reads the spectrometer files into the same tables as the skill, and fits the same Tm
+    for key, (mode, text, tms) in expect.items():
+        got = r.get(key) or {}
+        same = got.get("mode") == mode and got.get("text") == text and len(got.get("tm") or []) == len(tms) and all(
+            a is not None and abs(a - b) <= 1e-7 * max(1, abs(b)) for a, b in zip(got.get("tm") or [], tms))
+        print(f"check {key}: {'same table and Tm as the skill' if same else 'DIFFERENT from the skill'}: {got.get('status')}")
+        if not same:
+            a, b = (got.get("text") or "").split("\n"), text.split("\n")
+            k = next((i for i in range(max(len(a), len(b))) if a[i:i + 1] != b[i:i + 1]), None)
+            print(f"  mode {got.get('mode')} vs {mode}; Tm {got.get('tm')} vs {tms}; first different line {k}:"
+                  f"\n  page:  {a[k] if k is not None and k < len(a) else ''}\n  skill: {b[k] if k is not None and k < len(b) else ''}")
+        ok = ok and same
+    ok = (ok and "Chirascan scan at 205–285 nm every 20 nm, 121 temperatures" in r["chMelt"]["status"]
+          and r["chMelt"]["yTitle"] == "*θ*_{225} (mdeg)" and r["chUv"]["yTitle"] == "*A*_{225}"
+          and "absorbance at 225 nm" in r["chUv"]["status"] and r["chSpec"]["status"].startswith("These files hold spectra")
+          and "Skipped: CMPA_Tm (no 224 nm" in r["at224"]["status"] and r["specLambda"] == "224")
     if not ok:
         sys.exit("--check failed: see the values above.")
+
+
+def spectrometer_files():
+    """Fabricated Chirascan, JASCO and spreadsheet files, and what the skill reads from them (mode, table, Tm)."""
+    sys.path[:0] = [str(ROOT / "skill" / "tests"), str(ROOT / "skill" / "cdfit" / "scripts")]
+    import fake_files as FF
+    import cdfit_engine as E
+    import cdfit_files as CF
+    files = {"CMPA_Tm.csv": FF.chirascan_scan(), "CMPA_CD.csv": FF.chirascan_spectrum(),
+             "CMPA_CD_hot.csv": FF.chirascan_spectrum(temperature="80.1", folded=0.0, seed=9),
+             "cmpB_jasco.txt": FF.jasco_matrix(), "scan_sheet.csv": FF.plain_scan()}
+    mixed = ["CMPA_Tm.csv", "cmpB_jasco.txt", "scan_sheet.csv"]   # the order the page sorts them in
+    expect = {}
+    for key, names, mode, lam in [("chMelt", ["CMPA_Tm.csv"], "melt", 225), ("chUv", ["CMPA_Tm.csv"], "uv", 225),
+                                  ("chSpec", ["CMPA_CD.csv", "CMPA_CD_hot.csv"], "melt", 225),
+                                  ("mixed", mixed, "melt", 225), ("at224", mixed, "melt", 224)]:
+        p = CF.plan([(Path(n).stem, files[n]) for n in names], mode, lam)
+        text = CF.table_text(p)
+        tms = []
+        if p["mode"] != "spec":
+            s = E.Session({**E.base_state(p["mode"]), "dataText": text})
+            tms = [(s.tm(ser) or {}).get("v") for ser in s.data["series"]]
+        expect[key] = (p["mode"], text, tms)
+    return files, expect
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--check", action="store_true", help="load the page headless and check that the examples fit")
     a = ap.parse_args()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="backslashreplace")   # θ, λ and ° on a code-page console
     page, version = build()
     print(f"{OUT} ({len(page.encode('utf-8')) // 1024} KB, add-in v{version})")
     if a.check:

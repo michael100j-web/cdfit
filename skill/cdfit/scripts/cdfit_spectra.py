@@ -1,5 +1,5 @@
-"""Many spectra at once, as on the CD Fit page (artifact/src/spectra.js and import.js): files merged into one
-table, one row per spectrum, and θ at a wavelength against the temperature in each spectrum's name."""
+"""Many spectra at once, as on the CD Fit page (artifact/src/spectra.js): one row per spectrum, and θ at a
+wavelength against the temperature in each spectrum's name. Reading the files is in cdfit_files."""
 from __future__ import annotations
 
 import math
@@ -10,6 +10,7 @@ import cdfit_engine as E
 
 _RE_TEMP = re.compile(r"(-?[0-9]+(?:[.,][0-9]+)?)\s*(?:°\s*C|℃|deg\s*C|C)(?![A-Za-z])", re.I)
 _RE_NUM = re.compile(r"-?[0-9]+(?:[.,][0-9]+)?")
+_RE_BARE = re.compile(r"^\s*-?[0-9]+(?:[.,][0-9]+)?\s*$")
 _EDGES = re.compile(r"^[\s_\-–,;:()\[\]]+|[\s_\-–,;:()\[\]]+$")
 
 
@@ -27,7 +28,10 @@ def label_of(name):
         number, start, end = m.group(0), m.start(), m.end()
     rest = re.sub(r"\(\s*\)|\[\s*\]", " ", name[:start] + name[end:])
     group = _EDGES.sub("", rest).strip()
-    return {"value": float(number.replace(",", ".")), "celsius": celsius, "group": group or "Spectra"}
+    value = float(number.replace(",", "."))
+    if not celsius and _RE_BARE.match(name) and -30 <= value <= 130:
+        celsius = True   # a bare number heading a spectrum, as in a table of spectra, is its temperature
+    return {"value": value, "celsius": celsius, "group": group or "Spectra"}
 
 
 def value_at(ser, lam):
@@ -85,61 +89,7 @@ def melt_table(v):
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------- several files into one table
-def jasco_text(text):
-    """A JASCO export as a plain table (XYDATA block, column names from the units), or None."""
-    lines = text.replace("\r", "").split("\n")
-    start = next((i for i, l in enumerate(lines) if l.strip().upper() == "XYDATA"), None)
-    if start is None:
-        return None
-    head = {}
-    for l in lines[:start]:
-        parts = re.split(r"[\t,;]", l, maxsplit=1)
-        if len(parts) == 2:
-            head[parts[0].strip().upper()] = parts[1].strip()
-    data = []
-    for l in lines[start + 1:]:
-        if not l.strip():
-            continue
-        if math.isnan(E.parse_num(re.split(r"[\t,; ]+", l.strip())[0])):
-            break
-        data.append(l)
-    names = [head.get("XUNITS") or "X", head.get("YUNITS") or "Y"] + [head[k] for k in ("Y2UNITS", "Y3UNITS") if head.get(k)]
-    return "\n".join(["\t".join(names)] + data)
-
-
-def x_name(name, mode):
-    if re.search(r"nanomet|^\s*λ|wavelength", name or "", re.I):
-        return "λ (nm)"
-    if re.search(r"temp|°c", name or "", re.I):
-        return "T (°C)"
-    if name and name != "X":
-        return name
-    return {"spec": "λ (nm)", "melt": "T (°C)", "uv": "T (°C)"}.get(mode, "X")
-
-
-def merge(parsed, mode):
-    """parsed: [(file stem, parse_data result, only the first Y column)] → one table text, matched by X."""
-    cols, xs = [], {}
-    for stem, p, only_first in parsed:
-        ny = min(1, len(p["names"])) if only_first else len(p["names"])
-        for j in range(ny):
-            col = {}
-            for r in p["rows"]:
-                v = r[j + 1]
-                if math.isfinite(v):
-                    k = round(r[0] * 1e6) / 1e6
-                    col[k] = v
-                    xs[k] = r[0]
-            name = stem if ny == 1 else f"{stem}: {p['names'][j]}"
-            cols.append((re.sub(r"[\t\r\n]+", " ", name), col))
-    keys = sorted(xs)
-    lines = ["\t".join([x_name(parsed[0][1]["xName"], mode), *[n for n, _ in cols]])]
-    for k in keys:
-        lines.append("\t".join([E.js_str(xs[k]), *[E.js_str(c[k]) if k in c else "" for _, c in cols]]))
-    return "\n".join(lines), len(cols)
-
-
+# ---------------------------------------------------------------- output names
 def common_stem(paths):
     stems = [os.path.splitext(os.path.basename(p))[0] for p in paths]
     prefix = os.path.commonprefix(stems)

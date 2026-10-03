@@ -18,7 +18,10 @@ const cdfitSpectra = (function () {
     const number = m[1] !== undefined ? m[1] : m[0];   // the °C match captures the number; the fallback is the number
     const rest = (name.slice(0, m.index) + name.slice(m.index + m[0].length)).replace(/\(\s*\)|\[\s*\]/g, " ");
     const group = rest.replace(/^[\s_\-–,;:()[\]]+|[\s_\-–,;:()[\]]+$/g, "").trim();
-    return { value: parseFloat(number.replace(",", ".")), celsius, group: group || "Spectra" };
+    const value = parseFloat(number.replace(",", "."));
+    // a bare number heading a spectrum, as in a table of spectra, is its temperature
+    if (!celsius && /^\s*-?\d+(?:[.,]\d+)?\s*$/.test(name) && value >= -30 && value <= 130) celsius = true;
+    return { value, celsius, group: group || "Spectra" };
   }
 
   function valueAt(ser, lam) {

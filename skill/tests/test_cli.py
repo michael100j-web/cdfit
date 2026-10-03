@@ -186,12 +186,73 @@ class CLI(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("only be fitted on its own", err)
 
+    def test_spectrometer_files(self):
+        """A Chirascan melting scan gives CD at 225 nm against temperature (absorbance in UV melting), its spectra
+        open in spectrum mode, and a JASCO table of spectra and a spreadsheet scan give the 225 nm curve too. The
+        files are fabricated (fake_files.py) with known Tm values."""
+        import fake_files as FF
+        d = self.path("instr")
+        os.makedirs(d, exist_ok=True)
+        files = {"CMPA_Tm.csv": FF.chirascan_scan(tm=40.0), "CMPA_CD.csv": FF.chirascan_spectrum(),
+                 "CMPA_CD_hot.csv": FF.chirascan_spectrum(temperature="80.1", folded=0.0, seed=9),
+                 "cmpB_jasco.txt": FF.jasco_matrix(tm=35.0), "scan_sheet.csv": FF.plain_scan(tm=45.0)}
+        for name, text in files.items():
+            with open(os.path.join(d, name), "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
+        f = lambda name: os.path.join(d, name)
+        tm = lambda out: float(out.split("Tm = ")[1].split(" ")[0])
+        code, out, _ = run("fit", f("CMPA_Tm.csv"), "--out", self.path("c1"))
+        self.assertEqual(code, 0)
+        self.assertIn("read: CMPA_Tm: CD at 225 nm against temperature (Chirascan scan at 205–285 nm every 20 nm, "
+                      "121 temperatures).", out)
+        self.assertAlmostEqual(tm(out), 40, delta=0.5)
+        self.assertEqual(self.results("CMPA_Tm", "c1")["series"][0]["name"], "CMPA_Tm")
+        self.assertEqual(json.loads(read(self.path("c1", "CMPA_Tm_state.json")))["fmt"]["yTitle"], "*θ*_{225} (mdeg)")
+        code, out, _ = run("fit", f("CMPA_Tm.csv"), "--mode", "uv", "--out", self.path("c2"))
+        self.assertEqual(code, 0)
+        self.assertIn("absorbance at 225 nm against temperature", out)
+        self.assertAlmostEqual(tm(out), 40, delta=0.5)
+        code, _, err = run("fit", f("CMPA_Tm.csv"), "--wavelength", "222", "--out", self.path("c3"))
+        self.assertEqual(code, 2)
+        self.assertIn("no 222 nm: measured at 205–285 nm every 20 nm", err)
+        code, _, err = run("fit", f("CMPA_Tm.csv"), "--mode", "spec", "--out", self.path("c4"))
+        self.assertEqual(code, 2)
+        self.assertIn("a melting scan at 205–285 nm every 20 nm: use --mode melt", err)
+        code, out, _ = run("fit", f("CMPA_CD_hot.csv"), f("CMPA_CD.csv"), "--out", self.path("c5"))
+        self.assertEqual(code, 0)
+        self.assertIn("so they opened in CD spectrum", out)
+        self.assertIn("CMPA_CD (24.26 °C): max 225 nm", out)
+        self.assertLess(out.index("CMPA_CD (24.26"), out.index("CMPA_CD_hot (80.1"))   # natural order of the names
+        self.assertNotIn("HV", read(self.path("c5", "CMPA_CD_state.json")))
+        code, out, _ = run("fit", f("cmpB_jasco.txt"), "--out", self.path("c6"))
+        self.assertEqual(code, 0)
+        self.assertIn("read: cmpB_jasco: CD at 225 nm against temperature.", out)
+        self.assertAlmostEqual(tm(out), 35, delta=1.5)
+        code, out, _ = run("fit", f("scan_sheet.csv"), "--wavelength", "224", "--out", self.path("c7"))
+        self.assertEqual(code, 0)
+        self.assertIn("CD at 224 nm against temperature (scan at 222, 225, 230 nm, 61 temperatures)", out)
+        self.assertAlmostEqual(tm(out), 45, delta=0.5)
+
+    def test_file_readers(self):
+        import cdfit_files as F
+        self.assertIsNone(F.chirascan(E.example_data("melt")))
+        self.assertEqual(F.csv_to_tabs('T,"CD 225 nm, run 1",HT\n10,1.5,300\n'), "T\tCD 225 nm, run 1\tHT\n10\t1.5\t300\n")
+        self.assertEqual(F.csv_to_tabs("T\tA\n1\t2"), "T\tA\n1\t2")          # already tabs
+        self.assertEqual(F.csv_to_tabs("1,5 2,5\n3,5 4,5"), "1,5 2,5\n3,5 4,5")   # decimal commas, spaces between
+        self.assertEqual(F.nm_in("CD 225 nm")["w"], 225)
+        self.assertEqual(F.nm_in("A280")["w"], 280)
+        self.assertEqual(F.pick_wave([205, 225, 245], 225), {"k": 1})
+        self.assertIsNone(F.pick_wave([205, 225, 245], 222))                 # 20 nm apart: not interpolated
+        self.assertEqual(F.pick_wave([222, 225], 224)["lo"], 0)
+
     def test_spectrum_labels(self):
         import cdfit_spectra as SP
         self.assertEqual(SP.label_of("CMP-1 (4 °C)"), {"value": 4.0, "celsius": True, "group": "CMP-1"})
         self.assertEqual(SP.label_of("CMP1_20.5C"), {"value": 20.5, "celsius": True, "group": "CMP1"})
         self.assertEqual(SP.label_of("sample 37")["value"], 37.0)
         self.assertFalse(SP.label_of("sample 37")["celsius"])
+        self.assertTrue(SP.label_of("20")["celsius"])       # a bare number over a spectrum is its temperature
+        self.assertFalse(SP.label_of("200")["celsius"])
         self.assertIsNone(SP.label_of("blank"))
 
     def test_failed_fit_and_equation_error(self):

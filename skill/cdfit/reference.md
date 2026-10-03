@@ -80,9 +80,38 @@ number, one column per peptide (the name without its number). `_results.json` th
 these paths.
 
 Several data files given together become one table: each file's Y columns side by side, matched by X (rounded to
-1e-6), files in natural order, blanks where a file has no point at that X. A file with one Y column gives a column
-named after the file; a file with several gives "file: column"; a JASCO export (an XYDATA block) gives only its
-first channel (CD), named after the file. A .docx or .json can only be fitted on its own.
+1e-6), files in natural order of their names without extension, blanks where a file has no point at that X. A
+file with one Y column gives a column named after the file; a file with several gives "file: column". The same
+name twice gets " (2)". A .docx or .json can only be fitted on its own. `_results.json` has `read`: the `read:`
+line, or null.
+
+## Reading files (`cdfit_files.py`, the same rules as the CD Fit page)
+
+- **Comma-separated files** without tabs or semicolons, whose data rows have no spaces except around commas,
+  are split as CSV (quotes respected), so header names with spaces stay whole.
+- **JASCO** (an XYDATA block): the first channel (CD), named after the file. When the data start with a row of
+  numbers under an empty first cell (spectra at several temperatures), every column is kept, and under a
+  wavelength X axis numbers from −30 to 130 become temperatures ("20 °C").
+- **Chirascan** (first line `ProDataCSV`): the blocks after `Data:`. A block is named by the text lines just
+  above its numbers: a line without a comma is the property, a line with one gives the axes (`Temperature,Wavelength`:
+  temperatures down, wavelengths across in a row under an empty cell; `Wavelength,`: a spectrum). CD modes take
+  `CircularDichroism`, UV melting takes `Absorbance`. A spectrum gets the `#Temperature` remark in its name,
+  "file (24.26 °C)". Reading stops at `History:`.
+- **What a table holds.** Spectra: X is a wavelength axis (strictly monotonic, 150–1100 nm, and either named
+  as a wavelength or ≥ 5 points starting below 250 nm at most 10 nm apart, not under a temperature or time
+  header). A scan: every column name except detector-voltage ones (HT, HV, Voltage) gives a wavelength ("225 nm",
+  "CD 225 nm", "CD225", "A280", or a bare number), X looks like a temperature, and either a name says nm or the
+  X column is a temperature and the wavelength is among the bare numbers. Columns that differ only by their
+  wavelength form one curve ("CD" and units alone name nothing, so the curve is named after the file).
+- **The wavelength** (`--wavelength`, 225 nm): taken where it was measured (±1e-6 nm), or linearly between the
+  two nearest measured wavelengths when they are at most 5 nm apart. A scan at one wavelength uses that one, with
+  a note. Spectra named with their temperatures give the value at the wavelength by linear interpolation, one
+  column per peptide (needs three spectra with a number in their names and two temperatures for one peptide).
+- **Mode.** Without `--mode` the files choose: the melting mode if any file gives a melting curve, otherwise
+  spectrum mode. With `--mode`, files that do not fit are skipped; if none fit, the script stops (exit 2) and
+  lists each file with the reason and the mode to use.
+- **Y-axis title** (unless `--ytitle`): `*θ*_{225} (mdeg)` for Chirascan CD, `*A*_{225}` in UV melting, and in
+  melting mode the wavelength replaces the 225 in the default title.
 
 ## Word round trip
 

@@ -67,12 +67,14 @@ def read_xlsx(path, sheet=None):
     return "\n".join(lines)
 
 
-def read_data_files(paths, sheet, mode):
-    """One or more data files as one table: each file's Y columns side by side, matched by X. A JASCO export keeps
-    only its first channel (CD), named after the file, as on the CD Fit page."""
-    import cdfit_spectra as SP
-    parsed, skipped = [], []
-    natural = lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r"([0-9]+)", os.path.basename(p))]
+def read_data_files(paths, sheet, mode, lam=225.0):
+    """One or more data files as one state, read as the CD Fit page reads them (cdfit_files): each file's columns
+    side by side, matched by X, and spectrometer exports (JASCO, Chirascan) by their own layout. In the melting
+    modes, scans at several wavelengths and spectra named with their temperatures give the signal at `lam` against
+    temperature. Without a mode the files choose it: spectra are read in spectrum mode."""
+    import cdfit_files as F
+    texts = []
+    natural = lambda p: [int(t) if t.isdigit() else t.lower() for t in re.split(r"([0-9]+)", os.path.splitext(os.path.basename(p))[0])]
     for path in sorted(paths, key=natural) if len(paths) > 1 else paths:   # CMP1_4C before CMP1_20C
         if not os.path.exists(path):
             raise UsageError(f"No such file: {path}")
@@ -82,28 +84,34 @@ def read_data_files(paths, sheet, mode):
         if ext == ".xls":
             raise UsageError("Old .xls files are not supported: save the sheet as .xlsx or .csv.")
         raw = read_xlsx(path, sheet) if ext in (".xlsx", ".xlsm") else read_text_file(path)
-        jasco = SP.jasco_text(raw)
-        p = E.parse_data(jasco or raw)
-        if not p["rows"] or not p["names"]:
-            skipped.append(os.path.basename(path))
-            continue
-        parsed.append((os.path.splitext(os.path.basename(path))[0], p, jasco is not None, raw))
-    if skipped:
-        print("Skipped (no numbers found): " + ", ".join(skipped), file=sys.stderr)
-    if not parsed:
+        texts.append((os.path.splitext(os.path.basename(path))[0], raw))
+    start = mode or "melt"
+    p = F.plan(texts, start, lam, switch=mode is None)
+    hint = {"open it in CD spectrum": "use --mode spec", "open them in CD spectrum": "use --mode spec",
+            "open it in CD melting": "use --mode melt"}
+    skipped = [re.sub("|".join(hint), lambda m: hint[m.group(0)], s) for s in p["skipped"]]
+    if not p["cols"]:
+        if any("(no numbers)" not in s for s in skipped):
+            raise UsageError(f"Nothing to fit in {MODE_NAMES[p['mode']]} mode: " + "; ".join(skipped) + ".")
         raise UsageError("No numbers found: the data need an X column and at least one Y column.")
-    if len(parsed) == 1 and not parsed[0][2]:
-        return parsed[0][3]
-    text, _ = SP.merge([(stem, p, jasco) for stem, p, jasco, _ in parsed], mode or "melt")
-    return text
+    state = {"dataText": F.table_text(p)}
+    if p["mode"] != start or mode:
+        state["mode"] = p["mode"]
+    default = E.mode_fmt(p["mode"])["yTitle"]
+    title = F.title_for(p, lam, default, default)
+    if title != default:
+        state["fmt"] = {"yTitle": title}
+    if not (p["asIs"] and not skipped and not p["notes"] and p["mode"] == start):
+        state["_import"] = F.message(p, start, lam, skipped)
+    return state
 
 
-def load_sources(paths, sheet=None, mode=None):
+def load_sources(paths, sheet=None, mode=None, lam=225.0):
     """[(label, state, from_graph)] for data files, a saved state or a Word file."""
     if paths == ["-"]:
         return [("data", {"dataText": sys.stdin.read()}, False)]
     if len(paths) > 1:
-        return [("data", {"dataText": read_data_files(paths, sheet, mode)}, False)]
+        return [("data", read_data_files(paths, sheet, mode, lam), False)]
     path = paths[0]
     if not os.path.exists(path):
         raise UsageError(f"No such file: {path}")
@@ -126,7 +134,7 @@ def load_sources(paths, sheet=None, mode=None):
         if not isinstance(st, dict) or "dataText" not in st:
             raise UsageError("The .json file is not a CD Fit state (it has no dataText).")
         return [("state", st, True)]
-    return [("data", {"dataText": read_data_files([path], sheet, mode)}, False)]
+    return [("data", read_data_files([path], sheet, mode, lam), False)]
 
 
 # ============================ Options → state ============================
@@ -163,7 +171,7 @@ _FALSE = {"0", "false", "no", "off"}
 def apply_options(S, a, from_graph):
     """Command-line options on top of a state, as if they had been set in the add-in's panel."""
     if a.mode and not from_graph:
-        S = {**E.base_state(a.mode), "dataText": S.get("dataText", "")}
+        S = {**E.base_state(a.mode), "dataText": S.get("dataText", ""), **({"fmt": S["fmt"]} if S.get("fmt") else {})}
     S = E.apply_state(S, from_graph)
     if a.preset:
         S["eqText"] = E.PRESETS[a.preset]["text"]
@@ -385,7 +393,7 @@ def cmd_fit(a):
     import cdfit_spectra as SP
     import cdfit_word as W
 
-    sources = load_sources(a.sources, a.sheet, a.mode)
+    sources = load_sources(a.sources, a.sheet, a.mode, a.wavelength)
     if a.graph:
         pick = {int(t) for t in a.graph.split(",") if t.strip().isdigit()}
         sources = [s for s in sources if s[0].startswith("graph") and int(s[0][5:]) in pick]
@@ -406,6 +414,7 @@ def cmd_fit(a):
     multi = len(sources) > 1
     report, docx_graphs, status = [], [], 0
     for label, st, from_graph in sources:
+        imported = st.pop("_import", None)   # how the files were read, e.g. which wavelength a scan gave
         S = apply_options(st, a, from_graph)
         session = E.Session(S)
         if not session.data["series"]:
@@ -425,7 +434,7 @@ def cmd_fit(a):
         with open(state_path, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(session.S, ensure_ascii=False, indent=1))
         model_line = model_description(session.S, session.model) if session.S.get("fit") else None
-        rec = {"source": label, "mode": session.S["mode"], "model": model_line, "equation": session.S.get("eqText"),
+        rec = {"source": label, "read": imported, "mode": session.S["mode"], "model": model_line, "equation": session.S.get("eqText"),
                "direction": session.S.get("stepDir") if E.step_supported(session.model) else None,
                "model_error": session.model_error,
                "series": [series_report(session, s) for s in session.data["series"]],
@@ -477,6 +486,8 @@ def cmd_fit(a):
                                     "alt": session.alt_text(W.state_json(session.S)),
                                     "table": rows, "heading": None, "caption": None})
         if not a.json:
+            if imported:
+                print("read: " + imported)
             print_report(session, label if multi or label.startswith("graph") else "",
                          [p for p in paths] + [tsv], model_line)
             for line in extra:
@@ -545,7 +556,8 @@ def build_parser():
                    help="fit only points with X inside; the others are drawn faded ('' leaves a side open)")
     g.add_argument("--graph", help="for a .docx: which CD Fit graphs, numbered as in `list` (default: all)")
     g.add_argument("--wavelength", type=float, default=225.0,
-                   help="spectra: the wavelength (nm) for the table's value column and for θ against temperature (225)")
+                   help="the wavelength (nm) taken from a scan at several wavelengths (Chirascan, JASCO) or from spectra "
+                        "named with their temperatures; for spectra, also the table's value column (225)")
     m = f.add_argument_group("model")
     m.add_argument("--preset", choices=list(E.PRESETS), help="cmp (default), twostate (ΔH fitted) or boltz")
     m.add_argument("--equation", help="Prism-syntax equation: a file, or one string with lines separated by \\n")
