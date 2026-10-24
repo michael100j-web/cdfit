@@ -85,6 +85,25 @@ file with one Y column gives a column named after the file; a file with several 
 name twice gets " (2)". A .docx or .json can only be fitted on its own. `_results.json` has `read`: the `read:`
 line, or null.
 
+## Other representations (`cdfit_repr.py`; offered to the person, never applied unasked)
+
+- `--conc C[,C2,…] --path L [--residues N | --absorbance]`: each Y column is multiplied before fitting, so the graph,
+  its alt-text data and the results are in the new units. CD → mean residue ellipticity
+  [θ] = θ(mdeg) / (10 · *l* · *c* · *n*) in 10³ deg cm² dmol⁻¹ (factor 100 / (*l* · *c*[µM] · *n*)); absorbance (UV mode or
+  `--absorbance`) → ε = *A* / (*c* · *l*) in 10³ M⁻¹ cm⁻¹ (factor 1000 / (*c*[µM] · *l*)). One concentration for all
+  columns or one per column, separated by commas. The Y title changes accordingly unless `--ytitle` is given.
+- `--reference NM`: the files are read twice, at `--wavelength` and at NM, and each column becomes the difference
+  (rows matched by X); names get " − NM nm". Needs scans recorded at both wavelengths (Chirascan Tm-spec, JASCO).
+- `--fraction`: after the fit, `<name>_fraction.png`, `_fraction_state.json` and `_fraction_results.tsv` show
+  each fitted curve as F = (Y − U(T)) / (N(T) − U(T)) with U and N its own fitted unfolded and native baselines.
+  The graph is the CMP model (the fit's own equation) with REFN = 1, DEN = 0, REFU = 0, DEU = 0 fixed, so only Tm is
+  fitted; it equals the original Tm, with a smaller SE (the baselines no longer carry uncertainty). In
+  `_results.json` under `fraction`. With `--docx` the graph is added to the Word file.
+- `compare SOURCE …`: the same for curves from different fits on one graph. A source is `state.json[:COLS]` or
+  `report.docx#N[:COLS]` (graph N as in `list`; COLS = column numbers from 1 or names). `--names "A|B|…"` renames
+  the curves in order. Writes `<name>.png`, `_state.json`, `_results.tsv`, `_results.json` (default name
+  `compare_fraction`) and, with `--docx`, a Word file.
+
 ## Reading files (`cdfit_files.py`, the same rules as the CD Fit page)
 
 - **Comma-separated files** without tabs or semicolons, whose data rows have no spaces except around commas,

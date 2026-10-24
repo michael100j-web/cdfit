@@ -233,6 +233,85 @@ class CLI(unittest.TestCase):
         self.assertIn("CD at 224 nm against temperature (scan at 222, 225, 230 nm, 61 temperatures)", out)
         self.assertAlmostEqual(tm(out), 45, delta=0.5)
 
+    def test_representations(self):
+        """The alternatives to the as-measured graph: fraction folded (from one fit and across fits), the off-peak
+        reference, and per-molar units. All on fabricated data."""
+        import fake_files as FF
+        d = self.path("repr")
+        os.makedirs(d, exist_ok=True)
+        scan = os.path.join(d, "CMPA_Tm.csv")
+        with open(scan, "w", encoding="utf-8", newline="") as fh:
+            fh.write(FF.chirascan_scan(tm=40.0))
+        # fraction folded from one fit: same Tm, curves run 1 -> 0, an extra graph in the Word file
+        code, out, _ = run("fit", self.path("melt.txt"), "--fraction", "--docx", "--out", self.path("r1"))
+        self.assertEqual(code, 0)
+        self.assertIn("fraction folded (each curve on its own fitted baselines): CMP-1 Tm = 42.59", out)
+        self.assertIn("note: quote Tm ± SE from the fit above", out)
+        res = self.results("melt", "r1")
+        for s, f in zip(res["series"], res["fraction"]["series"]):
+            self.assertAlmostEqual(s["Tm"]["value"], f["Tm"]["value"], delta=0.05)
+            self.assertLess(f["Tm"]["se"], s["Tm"]["se"])
+        st = json.loads(read(self.path("r1", "melt_fraction_state.json")))
+        self.assertEqual(st["fmt"]["yTitle"], "Fraction folded")
+        self.assertTrue(all(st["params"][k]["fixed"] for k in ("refn", "den", "refu", "deu")))
+        p = E.parse_data(st["dataText"])
+        self.assertAlmostEqual(p["rows"][0][1], 1.0, delta=0.05)
+        self.assertAlmostEqual(p["rows"][-1][1], 0.0, delta=0.05)
+        self.assertEqual(len(W.read_graphs(self.path("r1", "melt.docx"))), 2)
+        # the off-peak reference: A225 - A285 of the same scan, the drift at 285 nm removed
+        code, out, _ = run("fit", scan, "--mode", "uv", "--reference", "285", "--out", self.path("r2"))
+        self.assertEqual(code, 0)
+        self.assertIn("CMPA_Tm − 285 nm: Tm = ", out)
+        self.assertAlmostEqual(float(out.split("Tm = ")[1].split(" ")[0]), 40, delta=0.5)
+        st = json.loads(read(self.path("r2", "CMPA_Tm_state.json")))
+        self.assertEqual(st["fmt"]["yTitle"], "*A*_{225} − *A*_{285}")
+        code, _, err = run("fit", scan, "--mode", "uv", "--reference", "222", "--out", self.path("r2b"))
+        self.assertEqual(code, 2)
+        self.assertIn("no 222 nm", err)
+        # per-molar units: CD -> mean residue ellipticity, absorbance -> epsilon
+        code, out, _ = run("fit", scan, "--conc", "200", "--path", "0.1", "--residues", "18", "--out", self.path("r3"))
+        self.assertEqual(code, 0)
+        raw = E.parse_data(json.loads(read(self.path("r2", "CMPA_Tm_state.json")))["dataText"])
+        st = json.loads(read(self.path("r3", "CMPA_Tm_state.json")))
+        self.assertEqual(st["fmt"]["yTitle"], "[*θ*]_{225} (10^{3} deg cm^{2} dmol^{−1})")
+        code, _, _ = run("fit", scan, "--out", self.path("r3raw"))
+        mdeg = E.parse_data(json.loads(read(self.path("r3raw", "CMPA_Tm_state.json")))["dataText"])["rows"][0][1]
+        mre = E.parse_data(st["dataText"])["rows"][0][1]
+        self.assertAlmostEqual(mre, mdeg * 100 / (0.1 * 200 * 18), places=6)
+        self.assertTrue(raw["rows"])
+        with open(self.path("two.txt"), "w") as fh:
+            fh.write("nm\ta\tb\n200\t0.2\t0.4\n210\t0.1\t0.2\n")
+        code, out, _ = run("fit", self.path("two.txt"), "--mode", "spec", "--conc", "2,4", "--path", "1", "--absorbance",
+                           "--out", self.path("r4"))
+        self.assertEqual(code, 0)
+        st = json.loads(read(self.path("r4", "two_state.json")))
+        self.assertEqual(st["fmt"]["yTitle"], "*ε* (10^{3} M^{−1} cm^{−1})")
+        rows = E.parse_data(st["dataText"])["rows"]
+        self.assertAlmostEqual(rows[0][1], 100.0)      # 0.2 / (2 µM · 1 cm) = 100 000 M-1 cm-1
+        self.assertAlmostEqual(rows[0][2], 100.0)      # the two dilutions overlap
+        code, _, err = run("fit", self.path("two.txt"), "--mode", "spec", "--conc", "2,4,6", "--path", "1",
+                           "--absorbance", "--out", self.path("r5"))
+        self.assertEqual(code, 2)
+        self.assertIn("one value or one per data column (2)", err)
+        code, _, err = run("fit", scan, "--conc", "200", "--out", self.path("r6"))
+        self.assertEqual(code, 2)
+        self.assertIn("--path (cm) is needed", err)
+        # compare: the CD and the referenced UV melt of the same run on one fraction-folded graph
+        code, out, _ = run("compare", self.path("r3", "CMPA_Tm_state.json"), self.path("r2", "CMPA_Tm_state.json") + ":1",
+                           "--names", "CD|UV", "--out", self.path("r7"), "--docx")
+        self.assertEqual(code, 0)
+        self.assertIn("CD: Tm = ", out)
+        self.assertIn("UV: Tm = ", out)
+        res = json.loads(read(self.path("r7", "compare_fraction_results.json")))
+        self.assertEqual([s["name"] for s in res["series"]], ["CD", "UV"])
+        self.assertEqual(len(W.read_graphs(self.path("r7", "compare_fraction.docx"))), 1)
+        code, out, _ = run("compare", self.path("r7", "compare_fraction.docx") + "#1:UV", "--out", self.path("r8"))
+        self.assertEqual(code, 0)
+        self.assertIn("UV: Tm = ", out)
+        code, _, err = run("compare", self.path("r7", "compare_fraction_results.tsv"), "--out", self.path("r9"))
+        self.assertEqual(code, 2)
+        self.assertIn("is not a state .json or a .docx", err)
+
     def test_chirascan_saved_through_excel_and_detector_limit(self):
         """A Chirascan spectrum from a 10 mm cell, opened and saved in Excel: read as a spectrum, and the points
         measured with the detector at its voltage limit left out, with a note."""

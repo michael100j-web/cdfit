@@ -5,6 +5,8 @@ Word add-in does, with the same model, fitter, defaults and Prism-style graph.
   python cdfit.py fit DATA [options]   fit a data file (.txt .csv .tsv .dat .xlsx, '-' = stdin), a saved state
                                        (.json) or every CD Fit graph in a Word file (.docx)
   python cdfit.py list FILE.docx       list the CD Fit graphs in a Word file
+  python cdfit.py compare SOURCE ...   several fitted curves (saved states, CD Fit graphs in Word files) on one
+                                       fraction-folded graph, e.g. the CD and the UV melt of one run
   python cdfit.py example MODE         print the add-in's example data (melt, uv or spec)
 
 `python cdfit.py fit -h` lists the options.
@@ -22,6 +24,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import cdfit_engine as E  # noqa: E402
+import cdfit_repr as R  # noqa: E402
 
 MODE_NAMES = {"melt": "CD melting", "uv": "UV melting", "spec": "CD spectrum"}
 DIRECTION_NAMES = {"any": "either direction", "up": "signal rises on unfolding", "down": "signal falls on unfolding"}
@@ -412,10 +415,33 @@ def cmd_fit(a):
     if "png" not in formats and a.docx is not None:
         formats.append("png")
     multi = len(sources) > 1
+    if a.reference is not None:                # A(λ) − A(reference) of the same scans, matched by temperature
+        if any(from_graph for _, _, from_graph in sources):
+            raise UsageError("--reference needs the instrument files (scans at several wavelengths), not a graph")
+        ref = load_sources(a.sources, a.sheet, a.mode, a.reference)
+        try:
+            for (_, st, _), (_, rst, _) in zip(sources, ref):
+                st["dataText"] = R.subtract_reference(st["dataText"], rst["dataText"], a.reference)
+        except R.ReprError as e:
+            raise UsageError(str(e)) from e
     report, docx_graphs, status = [], [], 0
     for label, st, from_graph in sources:
         imported = st.pop("_import", None)   # how the files were read, e.g. which wavelength a scan gave
         S = apply_options(st, a, from_graph)
+        if a.reference is not None and a.ytitle is None:
+            lam, refl = E.fmt_num(a.wavelength, 4), E.fmt_num(a.reference, 4)
+            q = "*A*" if S["mode"] == "uv" else "*θ*"
+            S["fmt"]["yTitle"] = f"{q}_{{{lam}}} − {q}_{{{refl}}}"
+        if a.conc is not None:                 # per-molar units: [θ] for CD, ε for absorbance
+            absorbance = a.absorbance or S["mode"] == "uv"
+            try:
+                n = len(E.parse_data(S.get("dataText", ""))["names"])
+                f = R.molar_factors(R.per_column(a.conc, n, "--conc"), a.path, a.residues, absorbance)
+                S["dataText"] = R.scale_columns(S["dataText"], f)
+            except (R.ReprError, ValueError) as e:
+                raise UsageError(str(e)) from e
+            if a.ytitle is None:
+                S["fmt"]["yTitle"] = R.molar_title(S["mode"], absorbance, None if S["mode"] == "spec" else a.wavelength)
         session = E.Session(S)
         if not session.data["series"]:
             raise UsageError("No numbers found: the data need an X column and at least one Y column.")
@@ -485,6 +511,34 @@ def cmd_fit(a):
                 docx_graphs.append({"png": fh.read(), "width_px": W_px, "height_px": H_px, "width_cm": width_cm,
                                     "alt": session.alt_text(W.state_json(session.S)),
                                     "table": rows, "heading": None, "caption": None})
+        if a.fraction:                         # the same fits, every curve on its own fitted baselines (1 → 0)
+            try:
+                fs = R.fraction_session([(session, None)], fmt={"exportCm": session.S["fmt"].get("exportCm", 12)})
+            except R.ReprError as e:
+                extra.append(f"note: no fraction-folded graph: {e}")
+            else:
+                fpaths = [os.path.join(out_dir, f"{base}_fraction.{f}") for f in formats]
+                fW, fH, fcm = P.render(fs, fpaths)
+                frows = fs.results_matrix()
+                with open(os.path.join(out_dir, f"{base}_fraction_results.tsv"), "w", encoding="utf-8-sig",
+                          newline="\n") as fh:
+                    fh.write("\n".join("\t".join(r) for r in frows) + "\n")
+                with open(os.path.join(out_dir, f"{base}_fraction_state.json"), "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(fs.S, ensure_ascii=False, indent=1))
+                rec["fraction"] = {"series": [series_report(fs, s) for s in fs.data["series"]],
+                                   "files": {"graph": fpaths}}
+                with open(res_json, "w", encoding="utf-8") as fh:
+                    fh.write(json.dumps(clean(rec), ensure_ascii=False, indent=1))
+                parts = [f"{s['name']} Tm = {E.fmt_pm(fs.tm(s)['v'], fs.tm(s)['se'])} °C" for s in fs.visible if fs.tm(s)]
+                extra.append("fraction folded (each curve on its own fitted baselines): " + "; ".join(parts))
+                extra.append("  note: quote Tm ± SE from the fit above; with the baselines held fixed the SE here "
+                             "is too small")
+                extra.append("  graph: " + ", ".join(fpaths))
+                if a.docx is not None:
+                    with open(next(p for p in fpaths if p.endswith(".png")), "rb") as fh:
+                        docx_graphs.append({"png": fh.read(), "width_px": fW, "height_px": fH, "width_cm": fcm,
+                                            "alt": fs.alt_text(W.state_json(fs.S)), "table": frows,
+                                            "heading": None, "caption": "Fraction folded"})
         if not a.json:
             if imported:
                 print("read: " + imported)
@@ -521,6 +575,88 @@ def cmd_list(a):
         names = [n for n in E.parse_data(st.get("dataText", ""))["names"]]
         mode = MODE_NAMES.get(st.get("mode", "melt"), st.get("mode"))
         print(f"{g['index']}. {mode} · {len(names)} data set(s) · {g['summary']}")
+    return 0
+
+
+def _compare_source(spec):
+    """'state.json:1,3' or 'report.docx#2:CMP-1' -> (Session, columns or None, label)."""
+    import cdfit_word as W
+    m = re.match(r"^(.*?\.(?:json|docx))(?:#(\d+))?(?::(.+))?$", spec, re.I)
+    if not m:
+        raise UsageError(f"compare: {spec!r} is not a state .json or a .docx (#N picks a graph, :COLS columns)")
+    path, gnum, cols = m.group(1), m.group(2), m.group(3)
+    if not os.path.exists(path):
+        raise UsageError(f"No such file: {path}")
+    if path.lower().endswith(".docx"):
+        graphs = [g for g in W.read_graphs(path) if "state" in g]
+        if not graphs:
+            raise UsageError(f"{path}: no CD Fit graphs")
+        if gnum is None and len(graphs) > 1:
+            raise UsageError(f"{path} has {len(graphs)} CD Fit graphs: add #N (see: cdfit.py list {path})")
+        g = graphs[int(gnum) - 1 if gnum else 0]
+        st, label = g["state"], f"{os.path.basename(path)}#{g['index']}"
+    else:
+        st, label = json.loads(read_text_file(path)), os.path.basename(path)
+    sess = E.Session(st, from_graph=True)
+    columns = None
+    if cols:
+        names = [s["name"] for s in sess.data["series"]]
+        columns = set()
+        for tok in cols.split(","):
+            tok = tok.strip()
+            if tok.isdigit() and 1 <= int(tok) <= len(names):
+                columns.add(int(tok) - 1)
+            elif tok in names:
+                columns.add(names.index(tok))
+            else:
+                raise UsageError(f"{label}: no column {tok!r}; the columns are " +
+                                 ", ".join(f"{i + 1} {n}" for i, n in enumerate(names)))
+    return sess, columns, label
+
+
+def cmd_compare(a):
+    import cdfit_plot as P
+    import cdfit_word as W
+    items = [_compare_source(s) for s in a.sources]
+    names = a.names.split("|") if a.names else None
+    fmt = {}
+    if a.xtitle:
+        fmt["xTitle"] = a.xtitle
+    if a.legend:
+        fmt["legend"] = a.legend
+    if a.width_cm:
+        fmt["exportCm"] = a.width_cm
+    try:
+        fs = R.fraction_session([(s, c) for s, c, _ in items], names=names, fmt=fmt)
+    except R.ReprError as e:
+        raise UsageError(str(e)) from e
+    os.makedirs(a.out, exist_ok=True)
+    formats = [f.strip().lower().lstrip(".") for f in a.formats.split(",") if f.strip()]
+    if "png" not in formats and a.docx is not None:
+        formats.append("png")
+    paths = [os.path.join(a.out, f"{a.name}.{f}") for f in formats]
+    Wp, Hp, cm = P.render(fs, paths)
+    rows = fs.results_matrix()
+    tsv = os.path.join(a.out, f"{a.name}_results.tsv")
+    with open(tsv, "w", encoding="utf-8-sig", newline="\n") as fh:
+        fh.write("\n".join("\t".join(r) for r in rows) + "\n")
+    with open(os.path.join(a.out, f"{a.name}_state.json"), "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(fs.S, ensure_ascii=False, indent=1))
+    rec = {"sources": [lab for _, _, lab in items], "series": [series_report(fs, s) for s in fs.data["series"]],
+           "summary": fs.summary_text(), "table": rows}
+    with open(os.path.join(a.out, f"{a.name}_results.json"), "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(clean(rec), ensure_ascii=False, indent=1))
+    print("fraction folded (each curve on its own fitted baselines), from: " + ", ".join(r for r in rec["sources"]))
+    print_report(fs, "", paths + [tsv], model_description(fs.S, fs.model))
+    print("  note: quote each Tm ± SE from its own fit; with the baselines held fixed the SE here is too small")
+    if a.docx is not None:
+        png = next(p for p in paths if p.endswith(".png"))
+        with open(png, "rb") as fh:
+            g = {"png": fh.read(), "width_px": Wp, "height_px": Hp, "width_cm": cm,
+                 "alt": fs.alt_text(W.state_json(fs.S)), "table": rows, "heading": None, "caption": None}
+        docx_path = a.docx or os.path.join(a.out, f"{a.name}.docx")
+        W.write_docx(docx_path, [g], title="CD Fit: fraction folded")
+        print(f"Word file (graph editable in the CD Fit add-in): {docx_path}")
     return 0
 
 
@@ -571,6 +707,17 @@ def build_parser():
     fg = m.add_mutually_exclusive_group()
     fg.add_argument("--no-fit", action="store_true", help="plot only")
     fg.add_argument("--fit", dest="force_fit", action="store_true", help="fit even in spectrum mode")
+    rp = f.add_argument_group("other representations (offered to the person, never applied unasked; the default is "
+                              "the data as measured, as in Prism)")
+    rp.add_argument("--conc", help="concentration in µM, one value or one per Y column (comma-separated): converts CD to "
+                                   "mean residue ellipticity (needs --residues) or absorbance to ε (--absorbance, UV mode)")
+    rp.add_argument("--path", type=float, help="path length in cm (with --conc)")
+    rp.add_argument("--residues", type=int, help="residues per strand, for mean residue ellipticity")
+    rp.add_argument("--absorbance", action="store_true", help="the Y values are absorbance (ε with --conc)")
+    rp.add_argument("--reference", type=float, metavar="NM",
+                    help="subtract the signal at this wavelength of the same scans, e.g. 285 for A225 − A285")
+    rp.add_argument("--fraction", action="store_true",
+                    help="also draw the fitted curves as fraction folded, each on its own fitted baselines")
     gr = f.add_argument_group("graph")
     gr.add_argument("--xtitle", help="X axis title (markup: *italic*, ^{sup}, _{sub})")
     gr.add_argument("--ytitle", help="Y axis title")
@@ -588,6 +735,21 @@ def build_parser():
     o.add_argument("--json", action="store_true", help="print the results as JSON instead of text")
     lst = sub.add_parser("list", help="list the CD Fit graphs in a Word file")
     lst.add_argument("docx")
+    cp = sub.add_parser("compare", help="several fitted curves on one fraction-folded graph",
+                        description="Put fitted melts from different fits on one fraction-folded graph (each curve on its "
+                                    "own fitted baselines, 1 = folded, 0 = unfolded), e.g. the CD and the UV melt of one "
+                                    "run, or runs at different concentrations or rates. A source is a saved state "
+                                    "(*_state.json) or a Word file with CD Fit graphs; add #N to pick graph N of a Word "
+                                    "file and :COLS to pick its data columns (numbers from 1 or names, comma-separated).")
+    cp.add_argument("sources", nargs="+", metavar="source", help="state.json[:COLS] or report.docx#N[:COLS]")
+    cp.add_argument("--names", help="legend names in order, separated by |")
+    cp.add_argument("--out", default=".", help="output folder (default: here)")
+    cp.add_argument("--name", default="compare_fraction", help="base name of the output files")
+    cp.add_argument("--formats", default="png", help="png, svg, pdf (comma-separated)")
+    cp.add_argument("--docx", nargs="?", const="", metavar="PATH", help="also write a Word file with the graph")
+    cp.add_argument("--xtitle", help="X axis title")
+    cp.add_argument("--legend", choices=["tr", "tl", "br", "bl", "off"])
+    cp.add_argument("--width-cm", type=float, help="graph width in the document (default 12)")
     ex = sub.add_parser("example", help="the add-in's example data")
     ex.add_argument("mode", choices=["melt", "uv", "spec"])
     ex.add_argument("--out", help="write to this file instead of printing")
@@ -602,7 +764,7 @@ def main(argv=None):
             pass
     a = build_parser().parse_args(argv)
     try:
-        return {"fit": cmd_fit, "list": cmd_list, "example": cmd_example}[a.cmd](a)
+        return {"fit": cmd_fit, "list": cmd_list, "compare": cmd_compare, "example": cmd_example}[a.cmd](a)
     except UsageError as e:
         print(f"cdfit: {e}", file=sys.stderr)
         return 2

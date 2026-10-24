@@ -29,6 +29,37 @@ Needs Python 3 with numpy and matplotlib (openpyxl for .xlsx). Use `py` on Windo
 3. Read the printed summary (a `read:` line when the files needed reading, one line per sample, then any
    `note:` lines) and show the user the PNG.
 
+## Choosing the representation: ask, never pick silently
+
+The default graph is the data as measured, with the fit, in the add-in's Prism-style layout: CD in mdeg, absorbance
+as read, temperature or wavelength on X. That is what people know from Prism, and it is what to draw when nobody chose
+otherwise.
+
+Some data are shown better another way. When one of the cases below applies, **ask the person before drawing**
+which representation(s) they want – with the AskUserQuestion tool if this environment has it (one question, the
+default first, `multiSelect` so they can take several), otherwise in one short question in the chat – and wait for
+the answer. Offer only the alternatives that apply, each with one line on what it shows. Ask once per task and reuse
+the answer for the rest of it; never switch representation on your own, and say in the reply which one each graph
+uses.
+
+| Case | Alternative to offer | Options |
+|---|---|---|
+| CD of samples whose concentrations the person knows (comparing peptides or concentrations) | mean residue ellipticity [θ] (10³ deg cm² dmol⁻¹); or "both": mdeg graph + MRE in the table | `--conc µM --path cm --residues n` |
+| absorbance spectra or melts at several concentrations | molar absorption coefficient ε (10³ M⁻¹ cm⁻¹): dilutions overlap if Beer–Lambert holds | `--conc µM --path cm --absorbance` (UV mode: automatic) |
+| several melts with different signal size, offset or drift; CD and UV of one run; runs at different concentrations or ramp rates | fraction folded: each curve on its own fitted baselines, 1 → 0, on one scale | `fit … --fraction`; curves from different fits: `compare a_state.json b_state.json` |
+| UV melt that drifts or scatters (absorbance still rising above the transition), scan recorded at several wavelengths | off-peak reference, e.g. A₂₂₅ − A₂₈₅ | `--reference 285` |
+| kinetics or data spanning more than two decades of X | logarithmic X axis | `--set xScale=log` (and `xMin`/`xMax`) |
+
+Rules for the alternatives:
+- **Concentrations come from the person** (their notebook), never from instrument file metadata – Chirascan and JASCO
+  headers are often wrong ("200 nM", "0 M", "10 mm" for a 1 mm cell). Ask for concentration, path length and residues
+  per strand if they are not known. In mixtures, *c* is the total strand concentration.
+- **Fraction folded** rescales with each curve's own fitted baselines; its T_m equals the original fit's. Quote T_m ±
+  SE from the original fit (the fraction graph holds the baselines fixed, so its SE is too small) – the script says so
+  in a `note:` line. It needs the CMP or two-state model (baselines REFN, DEN, REFU, DEU).
+- **Off-peak reference**: pick a wavelength where the folded and unfolded peptide absorb alike (285 nm for peptides
+  without aromatics; 320–350 nm otherwise). Report both T_m values (as measured and referenced) if they differ.
+
 ## Spectrometer files
 
 - **Chirascan** CSV (starts with `ProDataCSV`): the script takes the CircularDichroism block (the Absorbance block
@@ -98,6 +129,7 @@ midpoint at whatever concentration was measured.
 - If a fit fails, give the message and the likely fix (a direction, an X range, or a start value).
 - Show the graph and mention any Word file. Its graph can be edited in Word: open CD Fit (Home tab), click the
   picture, change things, then press **Update selected graph**.
+- Say which representation each graph uses (as measured, MRE/ε, fraction folded, referenced, log axis).
 - Keep the reply short: numbers first, little prose.
 
 ## Science notes for CMPs
@@ -109,7 +141,8 @@ midpoint at whatever concentration was measured.
 
 ## Files
 
-- `scripts/cdfit.py`: the command line (`fit`, `list`, `example`); `fit -h` lists every option.
+- `scripts/cdfit.py`: the command line (`fit`, `list`, `compare`, `example`); `fit -h` lists every option.
+- `scripts/cdfit_repr.py`: the other representations (per-molar units, off-peak reference, fraction folded).
 - `scripts/cdfit_engine.py`: the port of the add-in's parser, model compiler, fitter and formatting.
 - `scripts/cdfit_plot.py`: the add-in's graph layout drawn with matplotlib.
 - `scripts/cdfit_word.py`: Word files with add-in-editable graphs, and reading CD Fit graphs from .docx.
