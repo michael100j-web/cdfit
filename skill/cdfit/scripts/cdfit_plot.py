@@ -315,34 +315,102 @@ class _Canvas:
             self.fig.savefig(path, dpi=dpi, facecolor="#ffffff")
 
 
-def render(session, paths, dpi=None):
-    """Draw the session's graph to each path (.png, .svg or .pdf). Returns (width px, height px, width cm)."""
-    S, fits, model = session.S, session.fits, session.model
-    F = S["fmt"]
+def _frame(session):
+    """The graph's geometry, shared by render() and best_legend(): fonts, axes, margins and the data → pixel maps."""
+    F = session.S["fmt"]
     fs = _or(F.get("fontSize"), 16)
     fonts = _Fonts(F.get("fontFamily") or "Arial")
     tfs = fs * 1.06
     pw, ph = _or(F.get("plotW"), 430), _or(F.get("plotH"), 290)
     tick = fs * 0.45
-    minor_tick = tick * 0.55
-    aw = _or(F.get("axisW"), 1.25)
-    line_w = js_number(F.get("lineW"))
     vis = session.visible
     all_x = [v for s in vis for v in s["xs"] + s["xsEx"]]
     all_y = [v for s in vis for v in s["ys"] + s["ysEx"]]
     pad = not F.get("connect")   # spectra (connected lines) get tight axes
     xa = Axis(all_x, F.get("xMin"), F.get("xMax"), F.get("xStep"), F.get("xMinor"), F.get("xScale") == "log", pad)
     ya = Axis(all_y, F.get("yMin"), F.get("yMax"), F.get("yStep"), F.get("yMinor"), F.get("yScale") == "log", pad)
-    xt, yt = xa.ticks, ya.ticks
-    y_lab_w = max(fonts.width(ya.label(v), fs) for v in yt)
-    x_last_w = fonts.width(xa.label(xt[-1]), fs)
+    y_lab_w = max(fonts.width(ya.label(v), fs) for v in ya.ticks)
     ml = math.ceil(tick + 5 + y_lab_w + 10 + tfs * 1.05 + 8)
     mt = math.ceil(fs * 0.7)
+    return {"F": F, "fs": fs, "fonts": fonts, "tfs": tfs, "pw": pw, "ph": ph, "tick": tick, "vis": vis, "xa": xa,
+            "ya": ya, "y_lab_w": y_lab_w, "ml": ml, "mt": mt,
+            "X": lambda v: ml + xa.frac(v) * pw, "Y": lambda v: mt + ph - ya.frac(v) * ph}
+
+
+def _legend_items(session, g):
+    """(series, label, width) of the legend entries, the legend's line height and width."""
+    F, fonts = g["F"], g["fonts"]
+    lfs = g["fs"] * 0.85
+    items = []
+    for ser in g["vis"]:
+        label = ser["name"]
+        fit = session.fits[ser["idx"]] if ser["idx"] < len(session.fits) else None
+        tm = E.param_value(fit, session.model, "Tm")
+        if F.get("legendTm") and tm and math.isfinite(tm["v"]):
+            label += f" (*T*_{{m}} = {js_to_fixed(tm['v'], 1)} °C)"
+        items.append((ser, label, fonts.width(label, lfs)))
+    lh = lfs * 1.45
+    lw = lfs * 2.0 + max([w for _, _, w in items] or [0])
+    return items, lfs, lh, lw
+
+
+def _legend_origin(g, corner, lh, lw, n):
+    pad_l = 8
+    lx = g["ml"] + pad_l + 6 if corner.endswith("l") else g["ml"] + g["pw"] - pad_l - lw
+    ly = g["mt"] + pad_l if corner.startswith("t") else g["mt"] + g["ph"] - pad_l - lh * n
+    return lx, ly
+
+
+LEGEND_CORNERS = ("tr", "tl", "br", "bl")
+
+
+def best_legend(session, prefer=None):
+    """The legend corner that covers the fewest data points and fitted-curve points (ties: `prefer`, then tr, tl, br,
+    bl). The CD Fit add-in has fixed corners only, so this picks one of them for the state."""
+    g = _frame(session)
+    if not g["vis"]:
+        return prefer or "tr"
+    items, _, lh, lw = _legend_items(session, g)
+    xa, ya, X, Y = g["xa"], g["ya"], g["X"], g["Y"]
+    pts = []
+    for ser in g["vis"]:
+        for x, y in zip(ser["xs"] + ser["xsEx"], ser["ys"] + ser["ysEx"]):
+            if xa.min <= x <= xa.max and ya.min <= y <= ya.max:
+                pts.append((X(x), Y(y)))
+        fit = session.fits[ser["idx"]] if ser["idx"] < len(session.fits) else None
+        if g["F"].get("showCurve") and session.model and fit and not fit.get("error") and ser["xs"]:
+            x0, x1 = min(ser["xs"]), max(ser["xs"])
+            xsc = [x0 + (x1 - x0) * i / 100 for i in range(101)]
+            for x, y in zip(xsc, session.model.fn(xsc, fit["p"])):
+                y = float(y)
+                if math.isfinite(y) and ya.min <= y <= ya.max:
+                    pts.append((X(x), Y(y)))
+    order = ([prefer] if prefer in LEGEND_CORNERS else []) + [c for c in LEGEND_CORNERS if c != prefer]
+    margin = 4
+    best, best_n = order[0], None
+    for corner in order:
+        lx, ly = _legend_origin(g, corner, lh, lw, len(items))
+        n = sum(1 for px, py in pts if lx - margin <= px <= lx + lw + margin and ly - margin <= py <= ly + lh * len(items)
+                + margin)
+        if best_n is None or n < best_n:
+            best, best_n = corner, n
+    return best
+
+
+def render(session, paths, dpi=None):
+    """Draw the session's graph to each path (.png, .svg or .pdf). Returns (width px, height px, width cm)."""
+    S, fits, model = session.S, session.fits, session.model
+    g = _frame(session)
+    F, fs, fonts, tfs, pw, ph, tick = g["F"], g["fs"], g["fonts"], g["tfs"], g["pw"], g["ph"], g["tick"]
+    xa, ya, y_lab_w, ml, mt, X, Y, vis = g["xa"], g["ya"], g["y_lab_w"], g["ml"], g["mt"], g["X"], g["Y"], g["vis"]
+    minor_tick = tick * 0.55
+    aw = _or(F.get("axisW"), 1.25)
+    line_w = js_number(F.get("lineW"))
+    xt, yt = xa.ticks, ya.ticks
+    x_last_w = fonts.width(xa.label(xt[-1]), fs)
     mr = math.ceil(max(12, x_last_w / 2 + 6))
     mb = math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8)
     W, H = ml + pw + mr, mt + ph + mb
-    X = lambda v: ml + xa.frac(v) * pw
-    Y = lambda v: mt + ph - ya.frac(v) * ph
     width_cm = _or(F.get("exportCm"), 12)
     c = _Canvas(W, H, width_cm, fonts)
     clip = Rectangle((ml, mt - 2), pw + 2, ph + 4, transform=c.ax.transData)
@@ -440,22 +508,11 @@ def render(session, paths, dpi=None):
 
     # legend
     if F.get("legend") != "off" and vis:
-        lfs = fs * 0.85
-        lh = lfs * 1.45
+        items, lfs, lh, lw = _legend_items(session, g)
         r = min(_or(F.get("markerSize"), 5), lfs * 0.4)
-        items = []
-        for ser in vis:
-            label = ser["name"]
-            tm = tm_of(ser)
-            if F.get("legendTm") and tm and math.isfinite(tm["v"]):
-                label += f" (*T*_{{m}} = {js_to_fixed(tm['v'], 1)} °C)"
-            items.append((ser, label, fonts.width(label, lfs)))
         sym = lfs * 2.0
-        lw = sym + max(w for _, _, w in items)
-        pad_l = 8
         legend = F.get("legend") or "tr"
-        lx = ml + pad_l + 6 if legend.endswith("l") else ml + pw - pad_l - lw
-        ly = mt + pad_l if legend.startswith("t") else mt + ph - pad_l - lh * len(items)
+        lx, ly = _legend_origin(g, legend, lh, lw, len(items))
         for k, (ser, label, _) in enumerate(items):
             cy = ly + lh * k + lh / 2
             st = style_of(S, ser["idx"])

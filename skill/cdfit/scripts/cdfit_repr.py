@@ -104,30 +104,54 @@ def has_baselines(model):
     return model is not None and all(k in model.keys for k in ("tm", "refn", "den", "refu", "deu"))
 
 
-def fraction_of(session, ser):
-    """(xs, F) for one fitted series, all its points (the faded ones outside the fit range too)."""
+MIN_SEPARATION = 0.1    # the baselines' gap may not shrink below this share of its largest value in the fit range
+
+
+def baseline_problem(p, xs):
+    """Why F = (Y − U)/(N − U) is not usable for these fitted baselines over xs, or None."""
+    d = [(p["refn"] + p["den"] * (x + 273.15)) - (p["refu"] + p["deu"] * (x + 273.15)) for x in xs]
+    if not d:
+        return "no points in the fit range"
+    if min(d) < 0 < max(d):
+        return "its fitted native and unfolded baselines cross inside the data"
+    big = max(abs(v) for v in d)
+    if big == 0 or min(abs(v) for v in d) < MIN_SEPARATION * big:
+        return "its fitted baselines nearly meet inside the data"
+    return None
+
+
+def fraction_of(session, ser, skipped=None):
+    """(xs, F) for one fitted series: the points inside its fit range only (the merged graph has one X range, so
+    the points a fit left out would otherwise enter the fraction fit and move its Tm). None, with the reason added
+    to `skipped`, when the fit's baselines make F meaningless (they cross or nearly meet: F runs off to ±∞)."""
     fit = session.fit_of(ser)
     if not fit or fit.get("error") or not has_baselines(session.model):
         return None
     p = {k: fit["p"][i] for i, k in enumerate(session.model.keys)}
+    why = baseline_problem(p, ser["xs"])
+    if why:
+        if skipped is not None:
+            skipped.append((ser["name"], why))
+        return None
     out = []
-    for x, y in sorted(zip(ser["xs"] + ser["xsEx"], ser["ys"] + ser["ysEx"])):
+    for x, y in sorted(zip(ser["xs"], ser["ys"])):
         k = x + 273.15
         n, u = p["refn"] + p["den"] * k, p["refu"] + p["deu"] * k
-        if n != u and math.isfinite(y):
+        if math.isfinite(y):
             out.append((x, (y - u) / (n - u)))
     return [a for a, _ in out], [b for _, b in out]
 
 
-def fraction_series(session, columns=None, names=None):
-    """[(name, xs, F)] of the visible fitted series of a session (columns: 0-based indices to keep)."""
+def fraction_series(session, columns=None, names=None, skipped=None):
+    """[(name, xs, F)] of the visible fitted series of a session (columns: 0-based indices to keep); series whose
+    baselines make F meaningless are left out and listed in `skipped` as (name, reason)."""
     out = []
     for ser in session.data["series"]:
         if not session.S["series"][ser["idx"]].get("visible"):
             continue
         if columns is not None and ser["idx"] not in columns:
             continue
-        r = fraction_of(session, ser)
+        r = fraction_of(session, ser, skipped)
         if r:
             out.append((ser["name"], r[0], r[1]))
     if names:
@@ -150,7 +174,7 @@ def fraction_state(series, eq_text=None, fmt=None, styles=None):
         S["eqText"] = eq_text
     S["params"] = {k: dict(v) for k, v in FIXED_BASELINES.items()}
     S["stepDir"] = "any"
-    S["fmt"].update({"yTitle": "Fraction folded", "yMin": "-0.2", "yMax": "1.2", "yStep": "0.2", "legend": "bl"})
+    S["fmt"].update({"yTitle": "Fraction folded", "yMin": "-0.2", "yMax": "1.2", "yStep": "0.2", "legend": "tr"})
     if fmt:
         S["fmt"].update(fmt)
     if styles:
@@ -162,19 +186,41 @@ def fraction_state(series, eq_text=None, fmt=None, styles=None):
     return S
 
 
-def fraction_session(sessions_and_columns, names=None, fmt=None, styles=None):
+def fraction_session(sessions_and_columns, names=None, fmt=None, styles=None, skipped=None):
     """One fraction-folded Session from several fitted sessions: [(session, columns or None)].
-    The equation is the first session's (so a fixed ΔH other than −500 kJ/mol carries over)."""
-    series = []
+    names and styles go with the selected curves in order (a curve left out takes its name and style with it); the
+    curves left out are listed in `skipped` as (name, reason). The equation is the first session's (so a fixed ΔH
+    other than −500 kJ/mol carries over)."""
+    series, kept_styles, left_out = [], [], []
     eq = None
+    j = 0
     for sess, cols in sessions_and_columns:
         if not has_baselines(sess.model):
             raise ReprError("fraction folded needs a fitted model with baselines REFN, DEN, REFU, DEU (the CMP or "
                             "two-state model)")
         eq = eq or sess.S.get("eqText")
-        series += fraction_series(sess, cols)
+        for ser in sess.data["series"]:
+            if not sess.S["series"][ser["idx"]].get("visible"):
+                continue
+            if cols is not None and ser["idx"] not in cols:
+                continue
+            name = names[j] if names and j < len(names) and names[j] else ser["name"]
+            style = styles[j] if styles and j < len(styles) else None
+            j += 1
+            why = []
+            r = fraction_of(sess, ser, why)
+            if r:
+                series.append((name, r[0], r[1]))
+                kept_styles.append(style)
+            elif why:
+                left_out.append((name, why[0][1]))
+    if skipped is not None:
+        skipped.extend(left_out)
     if not series:
-        raise ReprError("no fitted curve to show as fraction folded")
-    if names:
-        series = [(names[i] if i < len(names) and names[i] else n, x, y) for i, (n, x, y) in enumerate(series)]
-    return E.Session(fraction_state(series, eq, fmt, styles))
+        raise ReprError("no fitted curve to show as fraction folded"
+                        + "".join(f"; {n}: {w}" for n, w in left_out))
+    fs = E.Session(fraction_state(series, eq, fmt, kept_styles if styles else None))
+    if not fmt or fmt.get("legend") in (None, "auto"):      # the legend goes to the corner with the fewest points
+        import cdfit_plot as P
+        fs.S["fmt"]["legend"] = P.best_legend(fs, prefer="tr")
+    return fs

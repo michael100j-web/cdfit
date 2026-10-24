@@ -450,6 +450,8 @@ def cmd_fit(a):
             base = f"{base}_{label}"
         files = []
         paths = [os.path.join(out_dir, f"{base}.{f}") for f in formats]
+        if session.S["fmt"].get("legend") == "auto":      # the emptiest corner, stored as that corner
+            session.S["fmt"]["legend"] = P.best_legend(session)
         W_px, H_px, width_cm = P.render(session, paths)
         files += paths
         rows = session.results_matrix()
@@ -512,11 +514,15 @@ def cmd_fit(a):
                                     "alt": session.alt_text(W.state_json(session.S)),
                                     "table": rows, "heading": None, "caption": None})
         if a.fraction:                         # the same fits, every curve on its own fitted baselines (1 → 0)
+            skipped = []
             try:
-                fs = R.fraction_session([(session, None)], fmt={"exportCm": session.S["fmt"].get("exportCm", 12)})
+                fs = R.fraction_session([(session, None)], fmt={"exportCm": session.S["fmt"].get("exportCm", 12)},
+                                        skipped=skipped)
             except R.ReprError as e:
                 extra.append(f"note: no fraction-folded graph: {e}")
             else:
+                for n, why in skipped:
+                    extra.append(f"note: {n} is not in the fraction-folded graph: {why}")
                 fpaths = [os.path.join(out_dir, f"{base}_fraction.{f}") for f in formats]
                 fW, fH, fcm = P.render(fs, fpaths)
                 frows = fs.results_matrix()
@@ -626,10 +632,13 @@ def cmd_compare(a):
         fmt["legend"] = a.legend
     if a.width_cm:
         fmt["exportCm"] = a.width_cm
+    skipped = []
     try:
-        fs = R.fraction_session([(s, c) for s, c, _ in items], names=names, fmt=fmt)
+        fs = R.fraction_session([(s, c) for s, c, _ in items], names=names, fmt=fmt, skipped=skipped)
     except R.ReprError as e:
         raise UsageError(str(e)) from e
+    for n, why in skipped:
+        print(f"note: {n} is not in the graph: {why}")
     os.makedirs(a.out, exist_ok=True)
     formats = [f.strip().lower().lstrip(".") for f in a.formats.split(",") if f.strip()]
     if "png" not in formats and a.docx is not None:
@@ -721,7 +730,7 @@ def build_parser():
     gr = f.add_argument_group("graph")
     gr.add_argument("--xtitle", help="X axis title (markup: *italic*, ^{sup}, _{sub})")
     gr.add_argument("--ytitle", help="Y axis title")
-    gr.add_argument("--legend", choices=["tr", "tl", "br", "bl", "off"])
+    gr.add_argument("--legend", choices=["tr", "tl", "br", "bl", "off", "auto"])
     gr.add_argument("--width-cm", type=float, help="graph width in the document (default 12)")
     gr.add_argument("--dpi", type=int, choices=[300, 600], help="PNG resolution (default 300)")
     gr.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
@@ -748,7 +757,7 @@ def build_parser():
     cp.add_argument("--formats", default="png", help="png, svg, pdf (comma-separated)")
     cp.add_argument("--docx", nargs="?", const="", metavar="PATH", help="also write a Word file with the graph")
     cp.add_argument("--xtitle", help="X axis title")
-    cp.add_argument("--legend", choices=["tr", "tl", "br", "bl", "off"])
+    cp.add_argument("--legend", choices=["tr", "tl", "br", "bl", "off", "auto"])
     cp.add_argument("--width-cm", type=float, help="graph width in the document (default 12)")
     ex = sub.add_parser("example", help="the add-in's example data")
     ex.add_argument("mode", choices=["melt", "uv", "spec"])

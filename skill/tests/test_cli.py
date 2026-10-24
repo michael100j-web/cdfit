@@ -311,6 +311,25 @@ class CLI(unittest.TestCase):
         code, _, err = run("compare", self.path("r7", "compare_fraction_results.tsv"), "--out", self.path("r9"))
         self.assertEqual(code, 2)
         self.assertIn("is not a state .json or a .docx", err)
+        # baselines that cross or nearly meet make F run off to infinity: such a curve is left out, by name, and the
+        # names and styles of the other curves stay with their own curves
+        import cdfit_repr as R
+        ok = {"refn": 1.0, "den": 0.0, "refu": 0.0, "deu": 0.0}
+        self.assertIsNone(R.baseline_problem(ok, [10, 50, 90]))
+        self.assertIn("cross", R.baseline_problem({**ok, "den": -1 / 350}, [10, 50, 90]))   # N = U at 76.85 °C
+        self.assertIn("nearly meet", R.baseline_problem({**ok, "den": -0.00272}, [10, 50, 90]))   # gap 0.23 -> 0.012
+        sess = [E.Session(json.loads(read(self.path(r, "CMPA_Tm_state.json"))), from_graph=True) for r in ("r3", "r2")]
+        real = R.baseline_problem
+        R.baseline_problem = lambda p, xs, _n=[0]: (_n.__setitem__(0, _n[0] + 1) or "crossed") if _n[0] == 0 else None
+        try:
+            skipped = []
+            fs = R.fraction_session([(sess[0], None), (sess[1], None)], names=["CD", "UV"],
+                                    styles=[{"color": "#ff0000"}, {"color": "#0000ff"}], skipped=skipped)
+        finally:
+            R.baseline_problem = real
+        self.assertEqual(skipped, [("CD", "crossed")])
+        self.assertEqual([s["name"] for s in fs.data["series"]], ["UV"])
+        self.assertEqual(fs.S["series"][0]["color"], "#0000ff")
 
     def test_chirascan_saved_through_excel_and_detector_limit(self):
         """A Chirascan spectrum from a 10 mm cell, opened and saved in Excel: read as a spectrum, and the points

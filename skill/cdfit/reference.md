@@ -97,7 +97,10 @@ line, or null.
 - `--fraction`: after the fit, `<name>_fraction.png`, `_fraction_state.json` and `_fraction_results.tsv` show
   each fitted curve as F = (Y − U(T)) / (N(T) − U(T)) with U and N its own fitted unfolded and native baselines.
   The graph is the CMP model (the fit's own equation) with REFN = 1, DEN = 0, REFU = 0, DEU = 0 fixed, so only Tm is
-  fitted; it equals the original Tm, with a smaller SE (the baselines no longer carry uncertainty). In
+  fitted; it equals the original Tm, with a smaller SE (the baselines no longer carry uncertainty). Only the points
+  inside each fit's X range are shown (the merged graph has one range). A curve whose fitted baselines cross or
+  nearly meet inside the data is left out with a note (F runs off to ±∞ there). The legend goes to the corner that
+  covers the fewest points (`--legend auto`, also available for `fit`). In
   `_results.json` under `fraction`. With `--docx` the graph is added to the Word file.
 - `compare SOURCE …`: the same for curves from different fits on one graph. A source is `state.json[:COLS]` or
   `report.docx#N[:COLS]` (graph N as in `list`; COLS = column numbers from 1 or names). `--names "A|B|…"` renames
