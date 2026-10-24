@@ -1,0 +1,2797 @@
+<title>CD Fit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: a lab bench. The graph is the instrument's display (left, held in view on wide screens);
+   the controls are its panel (right); on phones the panel follows the graph. */
+:root {
+  --bg: #f2f5f5;
+  --surface: #ffffff;
+  --sunken: #e8eeee;
+  --field: #ffffff;
+  --fg: #16232a;
+  --muted: #586a70;
+  --border: #d2dcdd;
+  --accent: #0f6466;
+  --accent-ink: #ffffff;
+  --accent-soft: #dcebeb;
+  --err: #b42318;
+  --ok: #18794e;
+  --paper: #ffffff;
+  --paper-edge: #cfd9da;
+  --shadow: 0 1px 2px rgb(16 40 44 / 6%), 0 10px 28px -16px rgb(16 40 44 / 28%);
+  --badge-bg: #fff3d1;
+  --badge-fg: #6b4e00;
+  --badge-edge: #ecd58f;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-data: "IBM Plex Mono", Consolas, "Cascadia Mono", ui-monospace, monospace;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1517; --surface: #152024; --sunken: #1b292d; --field: #101b1e; --fg: #e2ebeb; --muted: #94a7ab;
+    --border: #2b3c41; --accent: #5ec2bd; --accent-ink: #052625; --accent-soft: #173638; --err: #ff8f85;
+    --ok: #6fd39a; --paper: #ffffff; --paper-edge: #2b3c41; --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 30px -14px rgb(0 0 0 / 60%);
+    --badge-bg: #3a2f12; --badge-fg: #f3d58a; --badge-edge: #5a4818; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1517; --surface: #152024; --sunken: #1b292d; --field: #101b1e; --fg: #e2ebeb; --muted: #94a7ab;
+  --border: #2b3c41; --accent: #5ec2bd; --accent-ink: #052625; --accent-soft: #173638; --err: #ff8f85;
+  --ok: #6fd39a; --paper: #ffffff; --paper-edge: #2b3c41; --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 12px 30px -14px rgb(0 0 0 / 60%);
+  --badge-bg: #3a2f12; --badge-fg: #f3d58a; --badge-edge: #5a4818; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-ui); padding-inline: clamp(16px, 3vw, 32px); padding-block: 0 32px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding-block: 16px 14px; }
+.brand { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.brand svg { color: var(--accent); flex: none; }
+.host { font-size: 12px; color: var(--muted); }
+#modes { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+#modes button { border: 0; border-right: 1px solid var(--border); border-radius: 0; padding: 7px 14px; font-weight: 500; color: var(--muted); background: transparent; }
+#modes button:last-child { border-right: 0; }
+#modes button.active { background: var(--accent); color: var(--accent-ink); }
+.app { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr) minmax(330px, 430px); }
+  .stage { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); }
+}
+.stage { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.paper { margin: 0; background: var(--paper); border: 1px solid var(--paper-edge); border-radius: var(--radius); padding: 14px 16px 8px; box-shadow: var(--shadow); }
+#preview svg { width: 100%; height: auto; display: block; }
+#preview .pt { cursor: pointer; }
+#preview .pt:hover > * { stroke: #000000; stroke-width: 1.5; }
+.badge { align-self: flex-start; font-size: 12px; color: var(--badge-fg); background: var(--badge-bg); border: 1px solid var(--badge-edge); border-radius: 999px; padding: 2px 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: inherit; font-weight: 500; padding: 7px 12px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); border-radius: var(--radius); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: 0.55; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.small { padding: 3px 9px; font-size: 12.5px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.word-only, #linked { display: none !important; }
+[hidden] { display: none !important; }   /* hidden wins over .row, .section and the other display rules */
+body.nofit #btnFit { display: none; }
+#status { font-size: 13px; color: var(--muted); min-height: 20px; font-variant-numeric: tabular-nums; }
+#status.err { color: var(--err); }
+#status.ok { color: var(--ok); }
+.ask { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 12px 14px; display: grid; gap: 8px; }
+.ask h2 { font-size: 14px; margin: 0; font-weight: 600; }
+.ask-head { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 12px; flex-wrap: wrap; }
+.ask-out { white-space: pre-wrap; font-size: 13.5px; line-height: 1.55; max-width: 72ch; }
+.ask-out:empty { display: none; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+nav.tabs { display: flex; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--border); position: sticky; top: env(safe-area-inset-top, 0px); background: var(--surface); z-index: 2; border-radius: var(--radius) var(--radius) 0 0; overflow-x: auto; }
+nav.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 10px 10px 8px; color: var(--muted); }
+nav.tabs button.active { border-bottom-color: var(--accent); color: var(--fg); font-weight: 600; }
+section.tab { display: none; padding: 12px 14px 20px; }
+section.tab.active { display: block; }
+h3 { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+h3:first-child { margin-top: 2px; }
+textarea { width: 100%; font: 12.5px/1.4 var(--font-data); border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 8px; resize: vertical; color: var(--fg); background: var(--field); }
+input[type=number], input[type=text], select { font: inherit; padding: 5px 7px; border: 1px solid var(--border); border-radius: var(--radius); width: 100%; min-width: 0; background: var(--field); color: var(--fg); }
+input[type=color] { width: 30px; height: 26px; padding: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--field); }
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; align-items: end; }
+label.f { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 3px; min-width: 0; }
+label.c { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.hint { font-size: 12px; color: var(--muted); }
+.imp-lambda { margin: 4px 0 2px; font-size: 12px; color: var(--muted); }
+.imp-lambda input[type=number] { width: 6.5em; }
+.msg { font-size: 12.5px; margin-top: 4px; }
+.msg.err { color: var(--err); }
+#styleList, #results, #paramTable { overflow-x: auto; }
+table.t { border-collapse: collapse; width: 100%; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.t th, table.t td { border-bottom: 1px solid var(--border); padding: 4px 5px; text-align: left; }
+table.t th { color: var(--muted); font-weight: 500; }
+table.t td.num, table.t th.num { text-align: right; }
+table.t input[type=text] { padding: 3px 5px; }
+.series-item { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 4px 0; }
+.card { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 10px; background: var(--surface); }
+.card h4 { margin: 0 0 6px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+.swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+.big { font-size: 18px; font-weight: 600; margin: 2px 0 8px; font-variant-numeric: tabular-nums; }
+details summary { cursor: pointer; color: var(--accent); margin-top: 12px; }
+code { font-family: var(--font-data); font-size: 12px; background: var(--sunken); padding: 0 4px; border-radius: 3px; }
+@media (max-width: 520px) { .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.jump { color: var(--accent); text-decoration: none; font-weight: 500; padding: 7px 4px; align-self: center; }
+.jump:hover { text-decoration: underline; }
+.section { margin-top: 32px; display: grid; gap: 12px; scroll-margin-top: 16px; }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px; border-top: 1px solid var(--border); padding-top: 18px; }
+.section h2 { font-size: 17px; margin: 0; font-weight: 600; text-wrap: balance; }
+.section-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@media (min-width: 900px) {
+  .section-body { grid-template-columns: minmax(0, 620px) minmax(300px, 1fr); }
+  .section.no-figure .section-body { grid-template-columns: minmax(0, 1fr); }
+}
+.section-side { display: grid; gap: 10px; min-width: 0; }
+.section-side p { margin: 0; max-width: 65ch; }
+#derivSvgBox svg, #specSvgBox svg { width: 100%; height: auto; display: block; }
+#derivTable, #specTable { overflow-x: auto; }
+#derivTable td:first-child, #specTable td:first-child { white-space: nowrap; }
+body.dropping .paper { outline: 2px dashed var(--accent); outline-offset: 4px; }
+body.dropping::after { content: "Drop the files to load them"; position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: var(--radius); font-weight: 600; z-index: 10; }
+</style>
+<header class="top">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><path d="M3 3v26h26" fill="none" stroke="currentColor" stroke-width="2.6"/><path d="M6 9c6 0 7 1 10 8s5 7 12 7" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="9" cy="9" r="2" fill="currentColor"/><circle cx="16" cy="16" r="2" fill="currentColor"/><circle cx="24" cy="23" r="2" fill="currentColor"/></svg>
+    <h1>CD Fit</h1>
+    <span class="host" id="hostLabel">Same fit as the Word add-in, v1.4.2</span>
+  </div>
+  <div id="modes" role="tablist" aria-label="Mode">
+  <button data-mode="melt" title="Ellipticity vs temperature, fitted for Tm">CD melting</button>
+  <button data-mode="spec" title="Ellipticity vs wavelength, plotted as lines, with band positions and Rpn">CD spectrum</button>
+  <button data-mode="uv" title="Absorbance vs temperature, fitted with the same Tm model">UV melting</button>
+</div>
+</header>
+<main class="app">
+<div class="stage">
+<span class="badge" id="exampleBadge" hidden>Example data: paste your own in the Data tab</span>
+<figure class="paper"><div id="preview"></div></figure>
+
+
+<div class="actions">
+  <button class="primary" id="btnFit" title="Re-run the fit">Fit</button>
+  <button class="word-only primary" id="btnInsert" title="Insert the graph at the cursor">Insert graph</button>
+  <button class="word-only" id="btnReplace" title="Replace the selected graph picture with this one">Update selected graph</button>
+  <button class="word-only" id="btnLoad" title="Load data and settings from a graph picture inserted by CD Fit">Edit selected graph</button>
+  <button class="word-only" id="btnTable" title="Insert the fit results as a Word table">Insert results table</button>
+  <button class="browser-only needs-downloads" id="btnPng" hidden>Save PNG</button>
+  <button class="browser-only needs-downloads" id="btnSvg" hidden>Save SVG</button>
+  <button id="btnCopyTop">Copy results</button>
+  <a class="jump" href="#derivatives">1st and 2nd derivatives ↓</a>
+</div>
+<div id="linked"><span>📈 Showing the data saved in the <b>selected graph</b>. Edit anything, then save it back into the graph.</span><button class="small primary" id="btnLinkedSave">Save to graph</button></div>
+<div id="status" role="status"></div>
+<section class="ask" id="ask" hidden aria-labelledby="askTitle">
+  <div class="ask-head"><h2 id="askTitle">Ask Claude about this fit</h2><span class="hint">Sends the data and results. Uses your Claude usage.</span></div>
+  <label class="f" for="askQ">Question (optional)<textarea id="askQ" rows="2" placeholder="Is this fit trustworthy, and is there anything I should change?"></textarea></label>
+  <div class="row"><button class="primary" id="askBtn">Ask Claude</button><button id="askStop" hidden>Stop</button><span class="hint" id="askNote"></span></div>
+  <div class="ask-out" id="askOut" aria-live="polite"></div>
+</section>
+</div>
+<div class="panel">
+
+<nav class="tabs" role="tablist">
+  <button data-tab="data" class="active">Data</button>
+  <button data-tab="model">Model</button>
+  <button data-tab="format">Graph</button>
+  <button data-tab="results">Results</button>
+</nav>
+
+<!-- DATA -->
+<section class="tab active" id="tab-data">
+  <h3>Data table</h3>
+  <div class="hint"><span id="dataHint"></span> An optional header row gives the names. Decimal commas are fine.</div>
+  <textarea id="data" rows="11" spellcheck="false"></textarea>
+  <div class="row">
+    <button class="small" id="btnExample">Load example</button>
+    <button class="small word-only" id="btnImport" title="Select a table in the document first">Import table from document</button>
+    <button class="small" id="btnFile">Open file…</button>
+    <input type="file" id="file" accept=".csv,.txt,.tsv,.dat" hidden>
+    <button class="small" id="btnClear">Clear</button>
+  </div>
+  <div class="grid" style="margin-top:6px">
+    <label class="f">Multiply Y by<input type="number" id="yMult" step="any" value="1"></label>
+    <label class="f">Exclude X outside<span style="display:flex;gap:4px"><input type="number" id="xFrom" step="any" placeholder="min"><input type="number" id="xTo" step="any" placeholder="max"></span></label>
+  </div>
+  <h3>Data sets</h3>
+  <div id="seriesList" class="hint">No data yet.</div>
+</section>
+
+<!-- MODEL -->
+<section class="tab" id="tab-model">
+  <label class="c" style="margin-bottom:6px"><input type="checkbox" id="fitOn"> <b>Fit a model to the data</b></label>
+  <div id="modelBox">
+  <h3>Equation</h3>
+  <select id="preset"></select>
+  <textarea id="eq" rows="13" spellcheck="false" style="margin-top:6px"></textarea>
+  <div id="eqMsg" class="msg"></div>
+  <h3>Parameters</h3>
+  <div class="hint">Leave the value blank for an automatic initial estimate. Tick <b>Fix</b> to hold a parameter constant at that value.</div>
+  <table class="t" id="paramTable"></table>
+  <h3>Transition direction</h3>
+  <select id="stepDir">
+    <option value="any">Either direction</option>
+    <option value="up">Signal rises on unfolding (e.g. UV hyperchromicity)</option>
+    <option value="down">Signal falls on unfolding (e.g. CD at 225 nm)</option>
+  </select>
+  <div class="hint" id="stepHint" style="margin-top:4px"></div>
+  <details>
+    <summary>Equation syntax</summary>
+    <div class="hint" style="margin-top:6px">
+      One definition per line, <code>NAME=expression</code>, as in Prism's user-defined equations. <code>X</code> is the independent variable and the last line must define <code>Y</code>.
+      Any name that is never defined becomes a fitted parameter. Names are case-insensitive. Lines starting with <code>;</code> are comments.<br>
+      Operators: <code>+ - * / ^</code> and parentheses. Functions: <code>EXP LN LOG SQRT ABS CBRT MIN MAX SIN COS TAN ATAN</code>.
+      Odd roots of negative numbers (e.g. <code>^(1/3)</code>) return the real root.
+    </div>
+  </details>
+  </div>
+</section>
+
+<!-- FORMAT -->
+<section class="tab" id="tab-format">
+  <h3>Axis titles</h3>
+  <label class="f">X axis<input type="text" id="xTitle"></label>
+  <label class="f" style="margin-top:4px">Y axis<input type="text" id="yTitle"></label>
+  <div class="hint">Markup: <code>*italic*</code>, <code>^{superscript}</code>, <code>_{subscript}</code>.</div>
+
+  <h3>X axis range</h3>
+  <div class="grid4">
+    <label class="f">Min<input type="number" id="xMin" step="any" placeholder="auto"></label>
+    <label class="f">Max<input type="number" id="xMax" step="any" placeholder="auto"></label>
+    <label class="f">Major tick<input type="number" id="xStep" step="any" placeholder="auto"></label>
+    <label class="f">Minor ticks<input type="number" id="xMinor" min="0" max="9" step="1"></label>
+  </div>
+  <div class="grid" style="margin-top:4px"><label class="f">Scale<select id="xScale"><option value="linear">Linear</option><option value="log">Logarithmic (log₁₀)</option></select></label></div>
+  <h3>Y axis range</h3>
+  <div class="grid4">
+    <label class="f">Min<input type="number" id="yMin" step="any" placeholder="auto"></label>
+    <label class="f">Max<input type="number" id="yMax" step="any" placeholder="auto"></label>
+    <label class="f">Major tick<input type="number" id="yStep" step="any" placeholder="auto"></label>
+    <label class="f">Minor ticks<input type="number" id="yMinor" min="0" max="9" step="1"></label>
+  </div>
+  <div class="grid" style="margin-top:4px"><label class="f">Scale<select id="yScale"><option value="linear">Linear</option><option value="log">Logarithmic (log₁₀)</option></select></label></div>
+  <div class="hint">On a log axis the major ticks sit on each power of ten, "Minor ticks" above 0 adds the 2–9 ticks, and points ≤ 0 are hidden.</div>
+
+  <h3>Data set styles</h3>
+  <div id="styleList" class="hint">No data yet.</div>
+
+  <h3>Appearance</h3>
+  <div class="grid">
+    <label class="f">Plot width (px)<input type="number" id="plotW" min="150" max="1500" step="10"></label>
+    <label class="f">Plot height (px)<input type="number" id="plotH" min="100" max="1500" step="10"></label>
+    <label class="f">Font size<input type="number" id="fontSize" min="6" max="40" step="1"></label>
+    <label class="f">Font<select id="fontFamily"><option>Arial</option><option>Helvetica</option><option>Calibri</option><option>Times New Roman</option><option>Segoe UI</option></select></label>
+    <label class="f">Default symbol size<input type="number" id="markerSize" min="0" max="20" step="0.5"></label>
+    <label class="f">Curve width<input type="number" id="lineW" min="0" max="10" step="0.25"></label>
+    <label class="f">Axis width<input type="number" id="axisW" min="0.25" max="6" step="0.25"></label>
+    <label class="f">Legend<select id="legend"><option value="tr">Inside, top right</option><option value="tl">Inside, top left</option><option value="br">Inside, bottom right</option><option value="bl">Inside, bottom left</option><option value="off">Hidden</option></select></label>
+  </div>
+  <div style="margin-top:8px">
+    <label class="c"><input type="checkbox" id="showPoints"> Show data points</label>
+    <label class="c"><input type="checkbox" id="showCurve"> Show fitted curve</label>
+    <label class="c"><input type="checkbox" id="connect"> Connect data points with lines (spectra)</label>
+    <label class="c"><input type="checkbox" id="zeroLine"> Show zero line</label>
+    <label class="c"><input type="checkbox" id="curveAxis"> Extend curve over whole X axis</label>
+    <label class="c"><input type="checkbox" id="legendTm"> Show <i>T</i><sub>m</sub> in legend</label>
+    <label class="c"><input type="checkbox" id="tmLine"> Mark <i>T</i><sub>m</sub> with dotted line</label>
+    <label class="c"><input type="checkbox" id="hollow"> Hollow symbols by default</label>
+  </div>
+
+  <h3>Export</h3>
+  <div class="grid">
+    <label class="f">Width in document (cm)<input type="number" id="exportCm" min="2" max="40" step="0.5"></label>
+    <label class="f">Format<select id="exportFmt"><option value="png300">PNG, 300 dpi</option><option value="png600">PNG, 600 dpi</option><option value="svg">SVG vector (not re-editable)</option></select></label>
+  </div>
+  <div class="row"><button class="small" id="btnResetFmt">Reset graph format</button></div>
+</section>
+
+<!-- RESULTS -->
+<section class="tab" id="tab-results">
+  <div id="results" class="hint">Fit results appear here.</div>
+  <div class="row"><button class="small" id="btnCopy">Copy results (tab-separated)</button></div>
+</section>
+
+</div>
+</main>
+<section class="section" id="derivatives" aria-labelledby="derivTitle">
+  <div class="section-head">
+    <h2 id="derivTitle">1st and 2nd derivatives of the CD and UV fits</h2>
+    <div class="actions"><button class="needs-downloads" id="derivPng" hidden>Save PNG</button><button class="needs-downloads" id="derivSvg" hidden>Save SVG</button></div>
+  </div>
+  <div class="section-body">
+    <figure class="paper"><div id="derivSvgBox"></div></figure>
+    <div class="section-side">
+      <div id="derivTable"></div>
+      <p class="hint" id="derivNote"></p>
+      <p class="hint">α = (Y − native baseline) / (unfolded − native baseline), from each fit. Solid lines and filled points are CD, dashed lines and open points UV. Dotted lines mark the peak of dα/dT, where d²α/dT² crosses zero; the maximum and minimum of d²α/dT² mark where the transition starts and ends. dY/dT is the derivative of the fitted signal itself, baselines included.</p>
+      <p class="hint">With the CMP model (ΔH −500 kJ/mol) the peak of dα/dT lies about 1.5–2 °C above T<sub>m</sub> (α = ½), so say which one you quote.</p>
+    </div>
+  </div>
+</section>
+<section class="section" id="spectra" aria-labelledby="specTitle" hidden>
+  <div class="section-head">
+    <h2 id="specTitle">All spectra at once</h2>
+    <div class="actions">
+      <button id="specGradient">Colour by temperature</button>
+      <button id="specCopy">Copy table</button>
+      <button class="needs-downloads" id="specPng" hidden>Save PNG</button>
+      <button class="needs-downloads" id="specSvg" hidden>Save SVG</button>
+    </div>
+  </div>
+  <div class="section-body">
+    <figure class="paper" id="specFigure"><div id="specSvgBox"></div></figure>
+    <div class="section-side">
+      <label class="f" for="specLambda">Wavelength for θ against temperature (nm)<input type="number" id="specLambda" step="any" value="225"></label>
+      <p id="specFit"></p>
+      <p class="hint" id="specNote"></p>
+      <div class="row" id="specMeltRow" hidden><button class="primary" id="specToMelt">Fit θ against temperature in CD melting</button></div>
+      <div class="row" id="specConfirm" hidden><span class="hint">This replaces your data under CD melting.</span><button class="primary" id="specYes">Replace and fit</button><button id="specNo">Cancel</button></div>
+      <p class="hint">Each row is one spectrum. A temperature in the name (“CMP-1 20 °C”, or a file called “CMP1_20C”) puts the spectra on a temperature axis, one line per peptide.</p>
+    </div>
+  </div>
+  <div id="specTable"></div>
+</section>
+<script>
+"use strict";
+
+/* ============================ Presets ============================ */
+const PRESETS = {
+  cmp: {
+    label: "Tm of CMPs (trimer ⇌ 3 monomers, ΔH fixed)",
+    text:
+`; Temp vs. Elipticity -- Tm of CMPs
+; X: Temperature (°C)   Y: Ellipticity
+R=8.31
+H=-500000
+K=EXP(H/(R*(X+273.15))*((X+273.15)/(Tm+273.15)-1)-ln(0.75*0.0002^2))
+P=1/(3*K*(0.0002^2))
+U=(-P/2+(P^2/4+P^3/27)^(1/2))^(1/3)
+V=-(P/2+(P^2/4+P^3/27)^(1/2))^(1/3)
+F= U+V+1
+CDU=REFU+DEU*(X+273.15)
+CDN=REFN+DEN*(X+273.15)
+Y=F*(CDN-CDU)+CDU`
+  },
+  twostate: {
+    label: "Two-state unfolding, monomolecular (ΔH fitted)",
+    text:
+`; Monomolecular two-state transition, sloping baselines
+; X: Temperature (°C)   Y: Ellipticity   H: folding enthalpy (J/mol, negative)
+R=8.314
+T=X+273.15
+K=EXP(-H/R*(1/T-1/(Tm+273.15)))
+F=K/(1+K)
+CDU=REFU+DEU*T
+CDN=REFN+DEN*T
+Y=F*(CDN-CDU)+CDU`
+  },
+  boltz: {
+    label: "Boltzmann sigmoid",
+    text:
+`; Boltzmann sigmoid (Y goes from Bottom at low X to Top at high X)
+Y=Bottom+(Top-Bottom)/(1+EXP((V50-X)/Slope))`
+  }
+};
+const COLORS = ["#0a0ac8", "#d11a1a", "#16923a", "#000000", "#e07b00", "#7b2cbf", "#008b8b", "#c2185b"];
+const SHAPES = ["circle", "square", "triangle", "diamond", "tridown"];
+const TAG = "#CDFIT-STATE ";
+
+const DEFAULT_FMT = {
+  xTitle: "*T* (°C)",
+  yTitle: "*θ*_{225} (10^{3} deg cm^{2} dmol^{-1})",
+  xMin: "", xMax: "", xStep: "", xMinor: 1, xScale: "linear",
+  yMin: "", yMax: "", yStep: "", yMinor: 1, yScale: "linear",
+  plotW: 430, plotH: 290, fontSize: 16, fontFamily: "Arial",
+  markerSize: 5, lineW: 2, axisW: 1.25, legend: "tr",
+  showPoints: true, showCurve: true, connect: false, zeroLine: false, curveAxis: false, legendTm: true, tmLine: false, hollow: false,
+  exportCm: 12, exportFmt: "png300"
+};
+
+/* ============================ Modes ============================ */
+// Each mode has its own data and settings; switching keeps the others in MODE_STORE.
+const MODES = {
+  melt: { label: "CD melting", fit: true, fmt: {},
+          hint: "Paste from Excel/Prism: first column temperature, then one ellipticity column per sample." },
+  spec: { label: "CD spectrum", fit: false,
+          fmt: { xTitle: "*λ* (nm)", yTitle: "[*θ*] (10^{3} deg cm^{2} dmol^{-1})", showPoints: false, connect: true, zeroLine: true, legendTm: false, xMinor: 1 },
+          hint: "Paste from the spectrometer: first column wavelength (nm), then one ellipticity column per spectrum, e.g. one per temperature." },
+  uv:   { label: "UV melting", fit: true, stepDir: "up", fmt: { yTitle: "*A*_{215}", legend: "br" },
+          hint: "Paste from Excel: first column temperature, then one absorbance column per sample. The same Tm model is fitted, with absorbance rising on unfolding (Model tab)." }
+};
+function modeFmt(mode) { return { ...DEFAULT_FMT, ...(MODES[mode] || MODES.melt).fmt }; }
+function baseState(mode) {
+  return { mode, dataText: "", yMult: 1, xFrom: "", xTo: "", series: [], preset: "cmp", eqText: PRESETS.cmp.text, params: {}, fit: MODES[mode].fit,
+           stepDir: MODES[mode].stepDir || "any", fmt: modeFmt(mode) };
+}
+function modeDefaults(mode) { return { ...baseState(mode), dataText: exampleData(mode) }; }
+let MODE_STORE = {};
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+/* ============================ State ============================ */
+let S = baseState("melt");
+// S.series: [{color, visible, name, shape, fill, size, line}] indexed by column
+// S.params: lowercased name -> {value:"", fixed:false}
+let DATA = null;          // parsed data
+let MODEL = null;         // compiled model
+let FITS = [];            // fit results per series index
+
+const $ = (id) => document.getElementById(id);
+function store() { try { localStorage.setItem("cdfit.state.v2", JSON.stringify({ current: S, others: MODE_STORE })); } catch (e) {} }
+function restoreStored() {
+  try {
+    const t = localStorage.getItem("cdfit.state.v2");
+    if (t) return JSON.parse(t);
+    const old = localStorage.getItem("cdfit.state.v1");
+    if (old) return { current: JSON.parse(old), others: {} };
+  } catch (e) {}
+  return null;
+}
+function setStatus(msg, kind) { const el = $("status"); el.textContent = msg || ""; el.className = kind || ""; }
+
+/* ============================ Data parsing ============================ */
+function parseNum(s) {
+  s = String(s).trim();
+  if (s === "") return NaN;
+  s = s.replace(/−/g, "-").replace(/\s/g, "");
+  if (!/^[-+]?(\d+[.,]?\d*|[.,]\d+)([eE][-+]?\d+)?$/.test(s)) return NaN;
+  return parseFloat(s.replace(",", "."));
+}
+function parseData(text) {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim() !== "");
+  if (!lines.length) return { names: [], rows: [] };
+  let splitter;
+  if (lines.some(l => l.includes("\t"))) splitter = l => l.split("\t");
+  else if (lines.some(l => l.includes(";"))) splitter = l => l.split(";");
+  else if (lines.some(l => /\d,\d/.test(l) && /\s/.test(l.trim()))) splitter = l => l.trim().split(/\s+/); // decimal commas, space separated
+  else splitter = l => l.trim().split(/[\s,]+/);
+  let cells = lines.map(splitter);
+  let names = null;
+  const first = cells[0];
+  if (first.slice(1).some(c => c.trim() !== "" && isNaN(parseNum(c))) || isNaN(parseNum(first[0]))) {
+    names = first.map(c => c.trim());
+    cells = cells.slice(1);
+  }
+  const ncol = Math.max(2, ...cells.map(r => r.length), names ? names.length : 0);
+  const rows = cells.map(r => { const o = []; for (let i = 0; i < ncol; i++) o.push(parseNum(r[i] ?? "")); return o; })
+                    .filter(r => isFinite(r[0]));
+  const nSeries = ncol - 1;
+  const outNames = [];
+  for (let j = 0; j < nSeries; j++) outNames.push((names && names[j + 1]) || (nSeries === 1 ? "Data" : "Data " + (j + 1)));
+  return { xName: names ? names[0] : "X", names: outNames, rows };
+}
+function buildData() {
+  const p = parseData(S.dataText);
+  const mult = isFinite(parseFloat(S.yMult)) ? parseFloat(S.yMult) : 1;
+  const lo = S.xFrom === "" ? -Infinity : parseFloat(S.xFrom), hi = S.xTo === "" ? Infinity : parseFloat(S.xTo);
+  const series = p.names.map((name, j) => {
+    const xs = [], ys = [], xsEx = [], ysEx = [];
+    for (const r of p.rows) {
+      const x = r[0], y = r[j + 1];
+      if (!isFinite(y)) continue;
+      if (x < lo || x > hi) { xsEx.push(x); ysEx.push(y * mult); } else { xs.push(x); ys.push(y * mult); }
+    }
+    return { name, xs, ys, xsEx, ysEx };
+  });
+  // keep per-series settings aligned with columns
+  series.forEach((s, j) => {
+    if (!S.series[j]) S.series[j] = { color: COLORS[j % COLORS.length], visible: true, name: "" };
+  });
+  S.series.length = series.length;
+  series.forEach((s, j) => { if (S.series[j].name) s.name = S.series[j].name; s.idx = j; });
+  DATA = { series, xName: p.xName };
+}
+
+/* ============================ Equation compiler ============================ */
+const FUNCS = {
+  exp: "Math.exp", ln: "Math.log", log: "Math.log10", log10: "Math.log10", sqrt: "Math.sqrt", abs: "Math.abs",
+  cbrt: "Math.cbrt", sin: "Math.sin", cos: "Math.cos", tan: "Math.tan", atan: "Math.atan", min: "Math.min", max: "Math.max", pow: "$pow"
+};
+const CONSTS = { pi: "Math.PI" };
+function $pow(a, b) {
+  if (a < 0 && !Number.isInteger(b)) {
+    const inv = 1 / b, r = Math.round(inv);
+    if (Math.abs(inv - r) < 1e-9 && Math.abs(r % 2) === 1) return -Math.pow(-a, b);
+  }
+  return Math.pow(a, b);
+}
+function tokenize(src, lineNo) {
+  const toks = []; let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (/\s/.test(c)) { i++; continue; }
+    const m = /^(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/.exec(src.slice(i));
+    if (m) { toks.push({ t: "num", v: m[0] }); i += m[0].length; continue; }
+    const id = /^[A-Za-z_][A-Za-z0-9_]*/.exec(src.slice(i));
+    if (id) { toks.push({ t: "id", v: id[0] }); i += id[0].length; continue; }
+    if (src.startsWith("**", i)) { toks.push({ t: "op", v: "^" }); i += 2; continue; }
+    if ("+-*/^(),".includes(c)) { toks.push({ t: "op", v: c }); i++; continue; }
+    throw new Error(`Line ${lineNo}: unexpected character "${c}"`);
+  }
+  return toks;
+}
+function compileModel(text) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const defs = [];
+  lines.forEach((raw, k) => {
+    const line = raw.trim();
+    if (!line || line.startsWith(";") || line.startsWith("//") || line.startsWith("#")) return;
+    const eqi = line.indexOf("=");
+    if (eqi < 0) throw new Error(`Line ${k + 1}: expected NAME=expression`);
+    const name = line.slice(0, eqi).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`Line ${k + 1}: "${name}" is not a valid name`);
+    if (name.toLowerCase() === "x") throw new Error(`Line ${k + 1}: X cannot be redefined`);
+    defs.push({ name, key: name.toLowerCase(), expr: line.slice(eqi + 1), line: k + 1 });
+  });
+  if (!defs.length) throw new Error("The equation is empty.");
+  if (defs[defs.length - 1].key !== "y") throw new Error("The last definition must be Y=…");
+  const assignedAll = new Set(defs.map(d => d.key));
+  const defined = new Set();
+  const params = [];          // display names
+  const paramIdx = {};        // key -> index
+  const body = [];
+  for (const d of defs) {
+    const toks = tokenize(d.expr, d.line);
+    let pos = 0;
+    const peek = () => toks[pos];
+    const eat = (v) => { const t = toks[pos]; if (!t || t.v !== v) throw new Error(`Line ${d.line}: expected "${v}"`); pos++; };
+    const parseExpr = () => {
+      let s = parseTerm();
+      while (peek() && (peek().v === "+" || peek().v === "-")) { const op = toks[pos++].v; s = `(${s}${op}${parseTerm()})`; }
+      return s;
+    };
+    const parseTerm = () => {
+      let s = parseUnary();
+      while (peek() && (peek().v === "*" || peek().v === "/")) { const op = toks[pos++].v; s = `(${s}${op}${parseUnary()})`; }
+      return s;
+    };
+    const parseUnary = () => {
+      if (peek() && peek().v === "-") { pos++; return `(-${parseUnary()})`; }
+      if (peek() && peek().v === "+") { pos++; return parseUnary(); }
+      return parsePower();
+    };
+    const parsePower = () => {
+      const base = parsePrimary();
+      if (peek() && peek().v === "^") { pos++; return `$pow(${base},${parseUnary()})`; }
+      return base;
+    };
+    const parsePrimary = () => {
+      const t = toks[pos++];
+      if (!t) throw new Error(`Line ${d.line}: expression ends unexpectedly`);
+      if (t.t === "num") return `(${t.v})`;
+      if (t.v === "(") { const s = parseExpr(); eat(")"); return `(${s})`; }
+      if (t.t === "id") {
+        const key = t.v.toLowerCase();
+        if (peek() && peek().v === "(") {
+          const fn = FUNCS[key];
+          if (!fn) throw new Error(`Line ${d.line}: unknown function ${t.v}()`);
+          pos++;
+          const args = [];
+          if (!(peek() && peek().v === ")")) { args.push(parseExpr()); while (peek() && peek().v === ",") { pos++; args.push(parseExpr()); } }
+          eat(")");
+          return `${fn}(${args.join(",")})`;
+        }
+        if (key === "x") return "x";
+        if (defined.has(key)) return `v_${key}`;
+        if (assignedAll.has(key)) throw new Error(`Line ${d.line}: ${t.v} is used before it is defined`);
+        if (CONSTS[key]) return CONSTS[key];
+        if (!(key in paramIdx)) { paramIdx[key] = params.length; params.push(t.v); }
+        return `p[${paramIdx[key]}]`;
+      }
+      throw new Error(`Line ${d.line}: unexpected "${t.v}"`);
+    };
+    const js = parseExpr();
+    if (pos < toks.length) throw new Error(`Line ${d.line}: unexpected "${toks[pos].v}"`);
+    body.push(`${defined.has(d.key) ? "" : "let "}v_${d.key}=${js};`);
+    defined.add(d.key);
+  }
+  if (!params.length) throw new Error("The equation has no parameters to fit.");
+  const src = `"use strict";return function(x,p){${body.join("")}return v_y;};`;
+  const fn = new Function("$pow", src)($pow);
+  // vars(x, p) returns every defined quantity, e.g. the baselines CDN and CDU
+  const vsrc = `"use strict";return function(x,p){${body.join("")}return {${[...defined].map(k => `${k}:v_${k}`).join(",")}};};`;
+  const vars = new Function("$pow", vsrc)($pow);
+  return { params, keys: params.map(p => p.toLowerCase()), fn, vars, defs: defined };
+}
+
+/* ============================ Initial estimates ============================ */
+function linfit(xs, ys) {
+  const n = xs.length; let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; }
+  const den = n * sxx - sx * sx;
+  const b = Math.abs(den) < 1e-300 ? 0 : (n * sxy - sx * sy) / den;
+  return { a: (sy - b * sx) / n, b };
+}
+function estimates(xs, ys) {
+  const idx = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
+  const X = idx.map(i => xs[i]), Y = idx.map(i => ys[i]);
+  const n = X.length, k = Math.max(3, Math.min(n, Math.round(n * 0.2)));
+  const K = (x) => x + 273.15;
+  const low = linfit(X.slice(0, k).map(K), Y.slice(0, k));
+  const high = linfit(X.slice(n - k).map(K), Y.slice(n - k));
+  let tm = (X[0] + X[n - 1]) / 2;
+  for (let i = 1; i < n; i++) {
+    const f = (i) => { const yn = low.a + low.b * K(X[i]), yu = high.a + high.b * K(X[i]); return (Y[i] - yu) / (yn - yu); };
+    const f0 = f(i - 1), f1 = f(i);
+    if ((f0 - 0.5) * (f1 - 0.5) <= 0 && f0 !== f1) { tm = X[i - 1] + (0.5 - f0) / (f1 - f0) * (X[i] - X[i - 1]); break; }
+  }
+  const mean = (a) => a.reduce((s, v) => s + v, 0) / a.length;
+  return {
+    tm, refn: low.a, den: low.b, refu: high.a, deu: high.b, h: -300000,
+    bottom: mean(Y.slice(0, k)), top: mean(Y.slice(n - k)), v50: tm, slope: (X[n - 1] - X[0]) / 15
+  };
+}
+
+/* ============================ Levenberg–Marquardt ============================ */
+function solveScaled(A, g) {
+  const m = g.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
+  const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat([g[i] / D[i]]));
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (!(Math.abs(M[piv][c]) > 1e-14)) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c] / M[c][c]; if (f) for (let k = c; k <= m; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r[m] / r[i] / D[i]);
+}
+function invertScaled(A) {
+  const m = A.length, D = A.map((r, i) => Math.sqrt(Math.abs(r[i])) || 1);
+  const M = A.map((r, i) => r.map((v, j) => v / (D[i] * D[j])).concat(A.map((_, j) => (i === j ? 1 : 0))));
+  for (let c = 0; c < m; c++) {
+    let piv = c; for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (!(Math.abs(M[piv][c]) > 1e-15)) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    const d = M[c][c]; for (let k = 0; k < 2 * m; k++) M[c][k] /= d;
+    for (let r = 0; r < m; r++) if (r !== c) { const f = M[r][c]; if (f) for (let k = 0; k < 2 * m; k++) M[r][k] -= f * M[c][k]; }
+  }
+  return M.map((r, i) => r.slice(m).map((v, j) => v / (D[i] * D[j])));
+}
+function tCrit975(df) {
+  const tab = [NaN, 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228];
+  if (df <= 10) return tab[df] ?? NaN;
+  const z = 1.959963985, z2 = z * z;
+  return z + (z2 * z + z) / (4 * df) + (5 * z2 * z2 * z + 16 * z2 * z + 3 * z) / (96 * df * df)
+    + (3 * z ** 7 + 19 * z ** 5 + 17 * z ** 3 - 15 * z) / (384 * df ** 3);
+}
+function lmFit(fn, xs, ys, p0, fixed) {
+  const n = xs.length, free = [];
+  p0.forEach((_, i) => { if (!fixed[i]) free.push(i); });
+  const m = free.length;
+  if (n <= m) throw new Error(`Only ${n} points for ${m} free parameters.`);
+  const evalR = (p) => {
+    const r = new Float64Array(n); let s = 0;
+    for (let i = 0; i < n; i++) { const yi = fn(xs[i], p); if (!isFinite(yi)) return null; r[i] = ys[i] - yi; s += r[i] * r[i]; }
+    return { r, s };
+  };
+  const jac = (p, central) => {
+    const J = [];
+    for (const k of free) {
+      const h = (central ? 6e-6 : 1.5e-8) * Math.max(Math.abs(p[k]), 1e-3);
+      const pp = p.slice(); pp[k] += h;
+      const col = new Float64Array(n);
+      if (central) {
+        const pm = p.slice(); pm[k] -= h;
+        for (let i = 0; i < n; i++) col[i] = (fn(xs[i], pp) - fn(xs[i], pm)) / (2 * h);
+      } else {
+        for (let i = 0; i < n; i++) col[i] = (fn(xs[i], pp) - fn(xs[i], p)) / h;
+      }
+      if (!col.every(isFinite)) return null;
+      J.push(col);
+    }
+    return J;
+  };
+  const normal = (J, r) => {
+    const A = [], g = [];
+    for (let a = 0; a < m; a++) {
+      A.push(new Array(m)); let s = 0;
+      for (let i = 0; i < n; i++) s += J[a][i] * r[i];
+      g.push(s);
+      for (let b = 0; b <= a; b++) { let t = 0; for (let i = 0; i < n; i++) t += J[a][i] * J[b][i]; A[a][b] = t; }
+    }
+    for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) A[a][b] = A[b][a];
+    return { A, g };
+  };
+  let P = p0.slice(), cur = evalR(P);
+  if (!cur) throw new Error("The model gives non-numeric values at the initial parameter values.");
+  let lambda = 1e-3, iter = 0, converged = false;
+  for (; iter < 400 && m > 0; iter++) {
+    const J = jac(P, false);
+    if (!J) throw new Error("Could not compute derivatives (the model is not finite near the current values).");
+    const { A, g } = normal(J, cur.r);
+    let improved = false, small = false;
+    while (lambda < 1e16) {
+      const M = A.map((row, i) => row.map((v, j) => (i === j ? v * (1 + lambda) + 1e-300 : v)));
+      const d = solveScaled(M, g);
+      if (d) {
+        const Pn = P.slice(); free.forEach((k, j) => { Pn[k] += d[j]; });
+        const nw = evalR(Pn);
+        if (nw && nw.s <= cur.s) {
+          const rel = (cur.s - nw.s) / (cur.s + 1e-300);
+          small = rel < 1e-13 || d.every((dj, j) => Math.abs(dj) <= 1e-11 * (Math.abs(P[free[j]]) + 1e-11));
+          P = Pn; cur = nw; lambda = Math.max(lambda / 10, 1e-12); improved = true;
+          break;
+        }
+      }
+      lambda *= 10;
+    }
+    if (!improved || small) { converged = true; break; }
+  }
+  const df = n - m, ssr = cur.s;
+  const se = P.map(() => NaN);
+  let cov = null;
+  if (m > 0) {
+    const J = jac(P, true);
+    if (J) { const { A } = normal(J, cur.r); cov = invertScaled(A); }
+    if (cov) free.forEach((k, j) => { se[k] = Math.sqrt(Math.max(0, cov[j][j]) * ssr / df); });
+  }
+  const ybar = ys.reduce((a, b) => a + b, 0) / n;
+  const sst = ys.reduce((a, y) => a + (y - ybar) ** 2, 0);
+  const t = tCrit975(df);
+  return {
+    p: P, se, fixed: fixed.slice(), ci: P.map((v, i) => (fixed[i] ? null : [v - t * se[i], v + t * se[i]])),
+    ssr, df, n, r2: sst > 0 ? 1 - ssr / sst : NaN, syx: Math.sqrt(ssr / df), iter, converged, ambiguous: !cov
+  };
+}
+
+/* ============================ Transition direction ============================ */
+// The step is the unfolded minus the native baseline at the midpoint: CDU − CDN evaluated at X = Tm.
+function stepSupported(model) { return !!model && model.keys.includes("tm") && model.defs.has("cdu") && model.defs.has("cdn"); }
+function stepAt(p) { const v = MODEL.vars(p[MODEL.keys.indexOf("tm")], p); return v.cdu - v.cdn; }
+function stepOk(p, dir) { const s = stepAt(p); return dir === "up" ? s >= 0 : s <= 0; }
+// Fit with the step held to one sign, and Tm inside the data (outside it one baseline is unsupported and the step
+// means nothing). Tm is scanned across the data with the other parameters refitted at each Tm; the best allowed
+// point is refined, and the best point overall gives the unconstrained fit to compare against. The scan also
+// supplies good starting values, which drifting data often lack.
+function directedFit(xs, ys, p0, fixed, dir) {
+  const fn = MODEL.fn, iTm = MODEL.keys.indexOf("tm"), word = dir === "up" ? "rising" : "falling";
+  const lo = Math.min(...xs), hi = Math.max(...xs), inside = (p) => p[iTm] >= lo && p[iTm] <= hi;
+  const allowed = (p) => inside(p) && isFinite(stepAt(p)) && stepOk(p, dir);
+  if (fixed[iTm]) {
+    const r = lmFit(fn, xs, ys, p0, fixed);
+    if (allowed(r.p)) return r;
+    throw new Error(`With Tm fixed, the fit does not give a ${word} step inside the data. Free Tm or change the transition direction.`);
+  }
+  const N = 24, fixTm = fixed.slice();
+  fixTm[iTm] = true;
+  let best = null, bestAny = null;
+  const tryTm = (tm) => {
+    const p = p0.slice(); p[iTm] = tm;
+    try {
+      const r = lmFit(fn, xs, ys, p, fixTm);
+      if (!bestAny || r.ssr < bestAny.ssr) bestAny = r;
+      if (stepOk(r.p, dir) && (!best || r.ssr < best.ssr)) best = r;
+    } catch (e) {}
+  };
+  for (let k = 0; k <= N; k++) tryTm(lo + (hi - lo) * k / N);
+  let plain = null;
+  try { plain = lmFit(fn, xs, ys, bestAny ? bestAny.p : p0, fixed); } catch (e) {}
+  if (!best) throw new Error(`No fit gives a ${word} step at the transition.`);
+  let out = null;
+  try { const r = lmFit(fn, xs, ys, best.p, fixed); if (allowed(r.p)) out = r; } catch (e) {}
+  if (plain && allowed(plain.p) && (!out || plain.ssr <= out.ssr)) return plain;
+  if (!out) {   // the best allowed fit sits against the constraint: settle Tm by a fine scan, without a standard error
+    const t0 = best.p[iTm], h = (hi - lo) / N;
+    for (let k = -10; k <= 10; k++) { const tm = t0 + h * k / 10; if (tm >= lo && tm <= hi) tryTm(tm); }
+    out = { ...best, fixed: fixed.slice(), limit: true };
+    out.se = best.se.slice(); out.se[iTm] = NaN;
+    out.ci = best.ci.slice(); out.ci[iTm] = [NaN, NaN];
+  }
+  if (plain && !allowed(plain.p)) out.avoided = { tm: plain.p[iTm], syx: plain.syx, outside: !inside(plain.p) };
+  return out;
+}
+
+/* ============================ Fitting orchestration ============================ */
+function runFits() {
+  FITS = [];
+  if (!MODEL || !DATA) return;
+  DATA.series.forEach((s, j) => {
+    if (!S.series[j].visible || s.xs.length === 0) { FITS[j] = null; return; }
+    try {
+      const est = estimates(s.xs, s.ys);
+      const p0 = [], fixed = [];
+      MODEL.params.forEach((name, i) => {
+        const key = MODEL.keys[i], cfg = S.params[key] || { value: "", fixed: false };
+        const v = parseFloat(cfg.value);
+        const auto = key in est && isFinite(est[key]) ? est[key] : 1;
+        if (cfg.fixed && !isFinite(v)) throw new Error(`${name} is fixed but has no value.`);
+        p0.push(isFinite(v) ? v : auto); fixed.push(!!cfg.fixed);
+      });
+      const dir = stepSupported(MODEL) && (S.stepDir === "up" || S.stepDir === "down") ? S.stepDir : null;
+      const fit = dir ? directedFit(s.xs, s.ys, p0, fixed, dir) : lmFit(MODEL.fn, s.xs, s.ys, p0, fixed);
+      if (stepSupported(MODEL)) { fit.step = stepAt(fit.p); fit.dir = dir; }
+      FITS[j] = fit;
+    } catch (e) { FITS[j] = { error: e.message }; }
+  });
+}
+function paramValue(fit, name) {
+  if (!fit || fit.error || !MODEL) return null;
+  const i = MODEL.keys.indexOf(name.toLowerCase());
+  return i < 0 ? null : { v: fit.p[i], se: fit.se[i], ci: fit.ci[i], fixed: fit.fixed[i] };
+}
+
+/* ============================ Number formatting ============================ */
+function fmtNum(v, sig = 4) {
+  if (v === null || v === undefined || !isFinite(v)) return "—";
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 1e6 || a < 1e-3) return v.toExponential(sig - 1).replace("e", "E");
+  return String(Number(v.toPrecision(sig)));
+}
+function decimalsFor(se) { return Math.min(10, Math.max(0, 1 - Math.floor(Math.log10(se)))); }
+function fmtPM(v, se) {
+  if (!isFinite(se) || se <= 0) return fmtNum(v);
+  if (Math.abs(v) >= 1e6 || Math.abs(v) < 1e-3) return fmtNum(v) + " ± " + fmtNum(se, 2);
+  const d = decimalsFor(se);
+  return v.toFixed(d) + " ± " + se.toFixed(d);
+}
+function fmtTick(v, step) {
+  let d = 0;
+  while (d < 8 && Math.abs(Math.round(step * 10 ** d) - step * 10 ** d) > 1e-6) d++;
+  let s = (Math.abs(v) < step * 1e-9 ? 0 : v).toFixed(d);
+  return s.replace("-", "−");
+}
+
+/* ============================ Graph rendering ============================ */
+const measureCtx = document.createElement("canvas").getContext("2d");
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function markupSegments(str) {
+  const segs = []; let buf = "", italic = false, i = 0; const stack = [];
+  const push = () => { if (buf) { segs.push({ t: buf, it: italic, sc: stack.length ? stack[stack.length - 1] : 0 }); buf = ""; } };
+  while (i < str.length) {
+    const c = str[i];
+    if (c === "\\" && i + 1 < str.length) { buf += str[i + 1]; i += 2; continue; }
+    if (c === "*") { push(); italic = !italic; i++; continue; }
+    if ((c === "^" || c === "_") && str[i + 1] === "{") { push(); stack.push(c === "^" ? 1 : -1); i += 2; continue; }
+    if (c === "}" && stack.length) { push(); stack.pop(); i++; continue; }
+    buf += c; i++;
+  }
+  push();
+  return segs;
+}
+function markupWidth(str, fs, family) {
+  return markupSegments(str).reduce((w, s) => {
+    const size = s.sc ? fs * 0.7 : fs;
+    measureCtx.font = `${s.it ? "italic " : ""}${size}px ${family}`;
+    return w + measureCtx.measureText(s.t).width;
+  }, 0);
+}
+function markupTspans(str, fs) {
+  let shift = 0, out = "";
+  for (const s of markupSegments(str)) {
+    const target = s.sc === 1 ? -0.38 * fs : s.sc === -1 ? 0.22 * fs : 0;
+    const dy = target - shift; shift = target;
+    out += `<tspan${dy ? ` dy="${dy.toFixed(2)}"` : ""}${s.sc ? ` font-size="${(fs * 0.7).toFixed(2)}"` : ""}${s.it ? ` font-style="italic"` : ""}>${esc(s.t)}</tspan>`;
+  }
+  return out;
+}
+function niceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (m * e >= raw * (1 - 1e-9)) return m * e;
+  return 10 * e;
+}
+function autoAxis(lo, hi, userMin, userMax, userStep, pad = true) {
+  if (!isFinite(lo) || !isFinite(hi)) { lo = 0; hi = 1; }
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const uMin = parseFloat(userMin), uMax = parseFloat(userMax), uStep = parseFloat(userStep);
+  if (isFinite(uMin)) lo = uMin; else if (lo >= 0 && lo <= hi * 0.5) lo = 0;
+  if (isFinite(uMax)) hi = uMax; else if (hi <= 0 && hi >= lo * 0.5) hi = 0;
+  if (hi <= lo) hi = lo + 1;
+  const step = uStep > 0 ? uStep : niceStep((hi - lo) / 4);
+  let mn = isFinite(uMin) ? uMin : Math.floor(lo / step + 1e-9) * step;
+  let mx = isFinite(uMax) ? uMax : Math.ceil(hi / step - 1e-9) * step;
+  if (pad && !isFinite(uMax) && mx - hi < 0.04 * (mx - mn)) mx += step;
+  if (pad && !isFinite(uMin) && mn !== 0 && lo - mn < 0.04 * (mx - mn)) mn -= step;
+  return { min: mn, max: mx, step };
+}
+// Axis with ticks and a value→fraction mapping; log axes put major ticks on decades.
+function makeAxis(vals, userMin, userMax, userStep, minorN, log, pad = true) {
+  minorN = Math.max(0, Math.round(+minorN || 0));
+  if (!log) {
+    const a = autoAxis(Math.min(...vals), Math.max(...vals), userMin, userMax, userStep, pad);
+    const ticks = [], minor = [], n = Math.round((a.max - a.min) / a.step);
+    if (n > 200 || n < 0) ticks.push(a.min, a.max);
+    else { for (let i = 0; i <= n + 1e-9; i++) ticks.push(a.min + i * a.step); if (ticks[ticks.length - 1] < a.max - a.step * 1e-6) ticks.push(a.max); }
+    for (let i = 0; i < ticks.length - 1; i++) for (let k = 1; k <= minorN; k++) minor.push(ticks[i] + (ticks[i + 1] - ticks[i]) * k / (minorN + 1));
+    return { ...a, log: false, ticks, minor, frac: (v) => (v - a.min) / (a.max - a.min), label: (v) => fmtTick(v, a.step) };
+  }
+  const pos = vals.filter(v => v > 0);
+  const uMin = parseFloat(userMin), uMax = parseFloat(userMax);
+  let mn = uMin > 0 ? uMin : pos.length ? Math.pow(10, Math.floor(Math.log10(Math.min(...pos)) + 1e-9)) : 1;
+  let mx = uMax > mn ? uMax : pos.length ? Math.pow(10, Math.ceil(Math.log10(Math.max(...pos)) - 1e-9)) : 10;
+  if (mx <= mn) mx = mn * 10;
+  const l0 = Math.log10(mn), l1 = Math.log10(mx), ticks = [], minor = [];
+  for (let k = Math.ceil(l0 - 1e-9); k <= Math.floor(l1 + 1e-9); k++) ticks.push(Math.pow(10, k));
+  if (ticks.length < 2) { ticks.length = 0; ticks.push(mn, mx); }
+  if (minorN > 0) for (let k = Math.floor(l0) - 1; k <= Math.ceil(l1); k++) for (let m = 2; m <= 9; m++) { const v = m * Math.pow(10, k); if (v > mn * (1 + 1e-9) && v < mx * (1 - 1e-9)) minor.push(v); }
+  return {
+    min: mn, max: mx, step: 1, log: true, ticks, minor,
+    frac: (v) => (v > 0 ? (Math.log10(v) - l0) / (l1 - l0) : NaN),
+    label: (v) => { const k = Math.round(Math.log10(v)); return Math.abs(v - Math.pow(10, k)) < v * 1e-9 && (k < -3 || k > 4) ? `10^{${k}}`.replace("-", "−") : fmtNum(v, 4); }
+  };
+}
+// Per-data-set style, falling back to the graph-wide defaults.
+const DASHES = { solid: "", dash: "7,4", dot: "1.5,3.5", dashdot: "7,3,1.5,3" };
+function styleOf(j) {
+  const c = S.series[j] || {}, size = parseFloat(c.size);
+  return {
+    color: c.color || COLORS[j % COLORS.length],
+    shape: c.shape || SHAPES[j % SHAPES.length],
+    hollow: c.fill ? c.fill === "hollow" : !!S.fmt.hollow,
+    size: isFinite(size) ? size : +S.fmt.markerSize,
+    line: c.line || "solid"
+  };
+}
+function markerPath(shape, x, y, r, color, hollow, sw, tip) {
+  const m = markerShape(shape, x, y, r, color, hollow, sw);
+  return tip ? `<g class="pt"><title>${esc(tip)}</title>${m}</g>` : m;
+}
+function markerShape(shape, x, y, r, color, hollow, sw) {
+  const fill = hollow ? "#fff" : color, st = `fill="${fill}" stroke="${color}" stroke-width="${hollow ? sw : 0.5}"`;
+  const f = (v) => v.toFixed(2);
+  switch (shape) {
+    case "none": return "";
+    case "cross": { const a = r * 0.95, w = Math.max(1.2, r / 2.5); return `<path d="M${f(x - a)},${f(y - a)}L${f(x + a)},${f(y + a)}M${f(x - a)},${f(y + a)}L${f(x + a)},${f(y - a)}" stroke="${color}" stroke-width="${f(w)}" fill="none"/>`; }
+    case "plus": { const a = r * 1.1, w = Math.max(1.2, r / 2.5); return `<path d="M${f(x - a)},${f(y)}L${f(x + a)},${f(y)}M${f(x)},${f(y - a)}L${f(x)},${f(y + a)}" stroke="${color}" stroke-width="${f(w)}" fill="none"/>`; }
+    case "square": { const a = r * 0.9; return `<rect x="${f(x - a)}" y="${f(y - a)}" width="${f(2 * a)}" height="${f(2 * a)}" ${st}/>`; }
+    case "triangle": { const a = r * 1.2; return `<path d="M${f(x)},${f(y - a)}L${f(x + a * 0.95)},${f(y + a * 0.65)}L${f(x - a * 0.95)},${f(y + a * 0.65)}Z" ${st}/>`; }
+    case "tridown": { const a = r * 1.2; return `<path d="M${f(x)},${f(y + a)}L${f(x + a * 0.95)},${f(y - a * 0.65)}L${f(x - a * 0.95)},${f(y - a * 0.65)}Z" ${st}/>`; }
+    case "diamond": { const a = r * 1.25; return `<path d="M${f(x)},${f(y - a)}L${f(x + a)},${f(y)}L${f(x)},${f(y + a)}L${f(x - a)},${f(y)}Z" ${st}/>`; }
+    default: return `<circle cx="${f(x)}" cy="${f(y)}" r="${f(r)}" ${st}/>`;
+  }
+}
+function renderSVG(opts = {}) {
+  const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
+  const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55, aw = +F.axisW || 1.25;
+  const vis = DATA ? DATA.series.filter(s => S.series[s.idx].visible) : [];
+  const allX = vis.flatMap(s => s.xs.concat(s.xsEx)), allY = vis.flatMap(s => s.ys.concat(s.ysEx));
+  const pad = !F.connect;   // spectra (connected lines) get tight axes
+  const xa = makeAxis(allX, F.xMin, F.xMax, F.xStep, F.xMinor, F.xScale === "log", pad);
+  const ya = makeAxis(allY, F.yMin, F.yMax, F.yStep, F.yMinor, F.yScale === "log", pad);
+  const xt = xa.ticks, yt = ya.ticks;
+  const yLabW = Math.max(...yt.map(v => markupWidth(ya.label(v), fs, fam)));
+  const xLastW = markupWidth(xa.label(xt[xt.length - 1]), fs, fam);
+  const ml = Math.ceil(tick + 5 + yLabW + 10 + tfs * 1.05 + 8);
+  const mt = Math.ceil(fs * 0.7);
+  const mr = Math.ceil(Math.max(12, xLastW / 2 + 6));
+  const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
+  const W = ml + pw + mr, H = mt + ph + mb;
+  const X = (v) => ml + xa.frac(v) * pw;
+  const Y = (v) => mt + ph - ya.frac(v) * ph;
+  const f = (v) => v.toFixed(2);
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/>`;
+  s += `<defs><clipPath id="plotclip"><rect x="${ml}" y="${mt - 2}" width="${pw + 2}" height="${ph + 4}"/></clipPath></defs>`;
+
+  // zero line
+  if (F.zeroLine && !ya.log && ya.min < 0 && ya.max > 0)
+    s += `<line x1="${ml}" y1="${f(Y(0))}" x2="${f(ml + pw)}" y2="${f(Y(0))}" stroke="#000" stroke-width="${f(aw * 0.7)}"/>`;
+  // Tm lines
+  if (F.tmLine && S.fit) vis.forEach(ser => {
+    const tm = paramValue(FITS[ser.idx], "Tm");
+    if (tm && isFinite(tm.v) && tm.v >= xa.min && tm.v <= xa.max)
+      s += `<line x1="${f(X(tm.v))}" y1="${mt}" x2="${f(X(tm.v))}" y2="${mt + ph}" stroke="${styleOf(ser.idx).color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.8"/>`;
+  });
+  // curves
+  if (F.showCurve && MODEL) {
+    s += `<g clip-path="url(#plotclip)" fill="none" stroke-width="${+F.lineW}" stroke-linejoin="round">`;
+    vis.forEach(ser => {
+      const fit = FITS[ser.idx], st = styleOf(ser.idx);
+      if (!fit || fit.error || !(+F.lineW > 0) || st.line === "none") return;
+      let x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs);
+      if (F.curveAxis) { x0 = xa.min; x1 = xa.max; }
+      const logx = xa.log && x0 > 0;
+      let d = "", pen = false;
+      for (let i = 0; i <= 400; i++) {
+        const x = logx ? Math.pow(10, Math.log10(x0) + (Math.log10(x1) - Math.log10(x0)) * i / 400) : x0 + (x1 - x0) * i / 400;
+        const y = MODEL.fn(x, fit.p), py = Y(y);
+        if (!isFinite(y) || !isFinite(py)) { pen = false; continue; }
+        d += (pen ? "L" : "M") + f(X(x)) + "," + f(Math.max(-1e4, Math.min(1e4, py))); pen = true;
+      }
+      const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"${st.line === "dot" ? ' stroke-linecap="round"' : ""}` : "";
+      s += `<path d="${d}" stroke="${st.color}"${dash}/>`;
+    });
+    s += `</g>`;
+  }
+  // lines through the data (spectra)
+  if (F.connect && +F.lineW > 0) {
+    s += `<g clip-path="url(#plotclip)" fill="none" stroke-width="${+F.lineW}" stroke-linejoin="round">`;
+    vis.forEach(ser => {
+      const st = styleOf(ser.idx);
+      if (st.line === "none") return;
+      const idx = ser.xs.map((_, i) => i).sort((a, b) => ser.xs[a] - ser.xs[b]);
+      let d = "", pen = false;
+      for (const i of idx) {
+        const px = X(ser.xs[i]), py = Y(ser.ys[i]);
+        if (!isFinite(px) || !isFinite(py)) { pen = false; continue; }
+        d += (pen ? "L" : "M") + f(px) + "," + f(py); pen = true;
+      }
+      const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"${st.line === "dot" ? ' stroke-linecap="round"' : ""}` : "";
+      s += `<path d="${d}" stroke="${st.color}"${dash}/>`;
+    });
+    s += `</g>`;
+  }
+  // points
+  if (F.showPoints) vis.forEach(ser => {
+    const st = styleOf(ser.idx), col = st.color, shape = st.shape, r = st.size;
+    if (!(r > 0) || shape === "none") return;
+    const draw = (xs, ys, faded) => {
+      let g = `<g${faded ? ' opacity="0.3"' : ""}>`;
+      for (let i = 0; i < xs.length; i++) {
+        if (xs[i] < xa.min || xs[i] > xa.max || ys[i] < ya.min || ys[i] > ya.max) continue;
+        let tip = null;
+        if (opts.interactive) {
+          const fit = FITS[ser.idx], yf = fit && !fit.error && MODEL ? MODEL.fn(xs[i], fit.p) : NaN;
+          tip = `${ser.name}${faded ? " (excluded from fit)" : ""}\nX = ${fmtNum(xs[i], 6)}\nY = ${fmtNum(ys[i], 6)}` +
+                (isFinite(yf) ? `\nFit = ${fmtNum(yf, 5)}\nResidual = ${fmtNum(ys[i] - yf, 3)}` : "");
+        }
+        g += markerPath(shape, X(xs[i]), Y(ys[i]), r, col, st.hollow, Math.max(1, r / 4), tip);
+      }
+      return g + "</g>";
+    };
+    s += draw(ser.xsEx, ser.ysEx, true) + draw(ser.xs, ser.ys, false);
+  });
+
+  // axes
+  const by = mt + ph;
+  s += `<g stroke="#000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
+  s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/>`;
+  s += `<line x1="${ml}" y1="${mt}" x2="${ml}" y2="${f(by)}"/>`;
+  xt.forEach(v => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`; });
+  xa.minor.forEach(v => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + minorTick)}"/>`; });
+  yt.forEach(v => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`; });
+  ya.minor.forEach(v => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - minorTick)}" y2="${f(Y(v))}"/>`; });
+  s += `</g><g fill="#000">`;
+  xt.forEach(v => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${markupTspans(xa.label(v), fs)}</text>`; });
+  yt.forEach(v => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${markupTspans(ya.label(v), fs)}</text>`; });
+  // titles
+  s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.xTitle || "", tfs)}</text>`;
+  const ty = mt + ph / 2, tx = ml - tick - 5 - yLabW - 10 - tfs * 0.25;
+  s += `<text transform="translate(${f(tx)},${f(ty)}) rotate(-90)" x="0" y="0" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(F.yTitle || "", tfs)}</text>`;
+  s += `</g>`;
+
+  // legend
+  if (F.legend !== "off" && vis.length) {
+    const lfs = fs * 0.85, lh = lfs * 1.45, r = Math.min(+F.markerSize || 5, lfs * 0.4);
+    const items = vis.map(ser => {
+      let label = ser.name;
+      const tm = paramValue(FITS[ser.idx], "Tm");
+      if (F.legendTm && tm && isFinite(tm.v)) label += ` (*T*_{m} = ${tm.v.toFixed(1)} °C)`;
+      return { ser, label, w: markupWidth(label, lfs, fam) };
+    });
+    const sym = lfs * 2.0, lw = sym + Math.max(...items.map(i => i.w)), lhTot = lh * items.length;
+    const pad = 8;
+    let lx = F.legend.endsWith("l") ? ml + pad + 6 : ml + pw - pad - lw;
+    let ly = F.legend.startsWith("t") ? mt + pad : mt + ph - pad - lhTot;
+    s += `<g font-size="${f(lfs)}">`;
+    items.forEach((it, k) => {
+      const cy = ly + lh * k + lh / 2, st = styleOf(it.ser.idx), col = st.color, rr = Math.min(st.size || r, lfs * 0.4);
+      if (((F.showCurve && FITS[it.ser.idx] && !FITS[it.ser.idx].error) || F.connect) && +F.lineW > 0 && st.line !== "none") {
+        const dash = DASHES[st.line] ? ` stroke-dasharray="${DASHES[st.line]}"` : "";
+        s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${col}" stroke-width="${+F.lineW}"${dash}/>`;
+      }
+      if (F.showPoints && rr > 0) s += markerPath(st.shape, lx + sym * 0.4, cy, rr, col, st.hollow, Math.max(1, rr / 4));
+      s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(it.label, lfs)}</text>`;
+    });
+    s += `</g>`;
+  }
+  s += `</svg>`;
+  return { svg: s, width: W, height: H };
+}
+async function svgToPngDataUrl(svg, w, h, scale) {
+  const img = new Image();
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  await img.decode();
+  const c = document.createElement("canvas");
+  c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL("image/png");
+}
+
+/* ============================ UI: data sets, params, results ============================ */
+function renderSeriesList() {
+  const el = $("seriesList");
+  if (!DATA || !DATA.series.length) { el.innerHTML = '<span class="hint">No data yet.</span>'; return; }
+  el.innerHTML = "";
+  DATA.series.forEach((ser, j) => {
+    const cfg = S.series[j];
+    const row = document.createElement("div"); row.className = "series-item";
+    row.innerHTML = `<input type="checkbox" ${cfg.visible ? "checked" : ""} title="Show and fit">
+      <input type="color" value="${cfg.color}" title="Colour">
+      <input type="text" value="${esc(ser.name)}" title="Name used in the legend">
+      <span class="hint">${ser.xs.length} pts</span>`;
+    const [cb, col, name] = row.querySelectorAll("input");
+    cb.onchange = () => { cfg.visible = cb.checked; refresh(true); };
+    col.oninput = () => { cfg.color = col.value; refresh(false); };
+    col.onchange = () => renderStyleList();
+    name.onchange = () => { cfg.name = name.value.trim(); refresh(false); };
+    el.appendChild(row);
+  });
+}
+const SHAPE_NAMES = { circle: "● Circle", square: "■ Square", triangle: "▲ Triangle", tridown: "▼ Triangle down", diamond: "◆ Diamond", cross: "✕ Cross", plus: "+ Plus", none: "No symbol" };
+const LINE_NAMES = { solid: "Solid", dash: "Dashed", dot: "Dotted", dashdot: "Dash-dot", none: "No curve" };
+function renderStyleList() {
+  const el = $("styleList");
+  if (!DATA || !DATA.series.length) { el.innerHTML = '<span class="hint">No data yet.</span>'; return; }
+  const opt = (map, sel) => Object.entries(map).map(([k, v]) => `<option value="${k}"${k === sel ? " selected" : ""}>${v}</option>`).join("");
+  let h = `<table class="t"><tr><th></th><th>Data set</th><th>Symbol</th><th>Fill</th><th>Size</th><th>Curve</th></tr>`;
+  DATA.series.forEach((ser, j) => {
+    const st = styleOf(j), cfg = S.series[j];
+    h += `<tr data-j="${j}"><td><input type="color" data-k="color" value="${st.color}" title="Colour"></td>
+      <td>${esc(ser.name)}</td>
+      <td><select data-k="shape">${opt(SHAPE_NAMES, st.shape)}</select></td>
+      <td><select data-k="fill"><option value="filled"${st.hollow ? "" : " selected"}>Filled</option><option value="hollow"${st.hollow ? " selected" : ""}>Hollow</option></select></td>
+      <td><input type="number" data-k="size" min="0" max="20" step="0.5" value="${esc(cfg.size ?? "")}" placeholder="${+S.fmt.markerSize}" style="width:52px"></td>
+      <td><select data-k="line">${opt(LINE_NAMES, st.line)}</select></td></tr>`;
+  });
+  el.innerHTML = h + `</table><div class="hint">Blank size uses the default symbol size below.</div>`;
+  el.querySelectorAll("[data-k]").forEach(inp => {
+    const j = +inp.closest("tr").dataset.j, k = inp.dataset.k;
+    inp.oninput = () => { S.series[j][k] = inp.value; refresh(false); };
+    if (k === "color") inp.onchange = () => renderSeriesList();
+  });
+}
+function renderParamTable() {
+  const tbl = $("paramTable");
+  if (!MODEL) { tbl.innerHTML = ""; return; }
+  const first = FITS.find(f => f && !f.error);
+  let h = `<tr><th>Parameter</th><th>Value (blank = auto)</th><th>Fix</th><th class="num">Fitted${first ? "" : ""}</th></tr>`;
+  MODEL.params.forEach((name, i) => {
+    const key = MODEL.keys[i], cfg = S.params[key] || (S.params[key] = { value: "", fixed: false });
+    h += `<tr><td>${esc(name)}</td><td><input type="text" data-k="${key}" value="${esc(cfg.value)}" placeholder="auto"></td>
+      <td><input type="checkbox" data-k="${key}" ${cfg.fixed ? "checked" : ""}></td>
+      <td class="num">${first ? fmtNum(first.p[i]) : ""}</td></tr>`;
+  });
+  tbl.innerHTML = h;
+  tbl.querySelectorAll("input[type=text]").forEach(inp => inp.onchange = () => { S.params[inp.dataset.k].value = inp.value.trim().replace(",", "."); refresh(true); });
+  tbl.querySelectorAll("input[type=checkbox]").forEach(inp => inp.onchange = () => { S.params[inp.dataset.k].fixed = inp.checked; refresh(true); });
+}
+// Spectrum features: positive maximum, negative minimum, zero crossing between them, Rpn = θmax/|θmin|.
+function bands(ser) {
+  const idx = ser.xs.map((_, i) => i).sort((a, b) => ser.xs[a] - ser.xs[b]);
+  const X = idx.map(i => ser.xs[i]), Y = idx.map(i => ser.ys[i]);
+  if (!X.length) return null;
+  let iMax = 0, iMin = 0;
+  Y.forEach((y, i) => { if (y > Y[iMax]) iMax = i; if (y < Y[iMin]) iMin = i; });
+  let cross = NaN;
+  const [a, b] = iMin < iMax ? [iMin, iMax] : [iMax, iMin];
+  for (let i = a; i < b; i++) if (Y[i] * Y[i + 1] <= 0 && Y[i] !== Y[i + 1]) { cross = X[i] - Y[i] * (X[i + 1] - X[i]) / (Y[i + 1] - Y[i]); break; }
+  // a positive band must stand clearly above the noise: at least 2% of the negative band
+  const hasNeg = Y[iMin] < 0, hasPos = Y[iMax] > 0 && (!hasNeg || Y[iMax] > 0.02 * Math.abs(Y[iMin]));
+  return { xMax: X[iMax], yMax: Y[iMax], xMin: X[iMin], yMin: Y[iMin], cross: hasPos ? cross : NaN, rpn: hasPos && hasNeg ? Y[iMax] / Math.abs(Y[iMin]) : NaN, hasPos, n: X.length };
+}
+function renderBandResults(el) {
+  let h = "";
+  DATA.series.forEach((ser, j) => {
+    if (!S.series[j].visible) return;
+    const b = bands(ser);
+    h += `<div class="card"><h4><span class="swatch" style="background:${styleOf(j).color}"></span>${esc(ser.name)}</h4>`;
+    if (!b) { h += `<div class="hint">No points.</div></div>`; return; }
+    h += `<table class="t"><tr><th>Feature</th><th class="num">λ (nm)</th><th class="num">Value</th></tr>
+      <tr><td>${b.hasPos ? "Maximum (positive band)" : "Maximum (no clear positive band)"}</td><td class="num">${b.hasPos ? fmtNum(b.xMax, 5) : "—"}</td><td class="num">${fmtNum(b.yMax, 4)}</td></tr>
+      <tr><td>Minimum (negative band)</td><td class="num">${fmtNum(b.xMin, 5)}</td><td class="num">${fmtNum(b.yMin, 4)}</td></tr>
+      <tr><td>Crossover (zero)</td><td class="num">${isFinite(b.cross) ? b.cross.toFixed(1) : "—"}</td><td class="num"></td></tr>
+      <tr><td>R<sub>pn</sub> = max / |min|</td><td class="num"></td><td class="num">${isFinite(b.rpn) ? b.rpn.toFixed(3) : "—"}</td></tr></table>
+      <div class="hint" style="margin-top:4px">N = ${b.n} points. An R<sub>pn</sub> of about 0.1 or more, with a positive band near 225 nm, is typical of a collagen triple helix.</div></div>`;
+  });
+  el.innerHTML = h || "No visible data sets.";
+}
+function renderResults() {
+  const el = $("results");
+  if (DATA && DATA.series.length && !S.fit) { renderBandResults(el); return; }
+  if (!MODEL || !DATA || !DATA.series.length) { el.innerHTML = "Fit results appear here."; return; }
+  let h = "";
+  DATA.series.forEach((ser, j) => {
+    if (!S.series[j].visible) return;
+    const fit = FITS[j], col = S.series[j].color;
+    h += `<div class="card"><h4><span class="swatch" style="background:${col}"></span>${esc(ser.name)}</h4>`;
+    if (!fit) { h += `<div class="hint">No points.</div></div>`; return; }
+    if (fit.error) { h += `<div class="msg err">${esc(fit.error)}</div></div>`; return; }
+    const tm = paramValue(fit, "Tm");
+    if (tm) h += `<div class="big"><i>T</i><sub>m</sub> = ${fmtPM(tm.v, tm.se)} °C</div>`;
+    h += `<table class="t"><tr><th>Parameter</th><th class="num">Best fit</th><th class="num">Std. error</th><th class="num">95% CI</th></tr>`;
+    MODEL.params.forEach((name, i) => {
+      h += `<tr><td>${esc(name)}</td><td class="num">${fmtNum(fit.p[i], 5)}</td>`;
+      h += fit.fixed[i] ? `<td class="num" colspan="2">fixed</td></tr>` : `<td class="num">${fmtNum(fit.se[i], 3)}</td><td class="num">${fmtNum(fit.ci[i][0])} to ${fmtNum(fit.ci[i][1])}</td></tr>`;
+    });
+    h += `</table><div class="hint" style="margin-top:4px">R² = ${fit.r2.toFixed(5)} · S<sub>y.x</sub> = ${fmtNum(fit.syx, 3)} · N = ${fit.n} · df = ${fit.df} · ${fit.converged ? "converged" : "not converged"} in ${fit.iter} iterations${fit.ambiguous ? " · <b>ambiguous</b> (parameters not identifiable)" : ""}</div>`;
+    if (isFinite(fit.step)) h += `<div class="hint">Step at <i>T</i><sub>m</sub> (unfolded − native baseline) = ${fmtNum(fit.step, 3)}${fit.dir ? ` · constrained to ${fit.dir === "up" ? "rise" : "fall"} on unfolding` : ""}</div>`;
+    if (fit.avoided) h += `<div class="hint">Without the constraint the fit ${fit.avoided.outside ? "puts <i>T</i><sub>m</sub> outside the data" : `has a ${fit.dir === "up" ? "falling" : "rising"} step`} (<i>T</i><sub>m</sub> = ${fmtNum(fit.avoided.tm, 4)} °C, S<sub>y.x</sub> = ${fmtNum(fit.avoided.syx, 3)}). This fit was found by scanning <i>T</i><sub>m</sub> across the data.</div>`;
+    if (fit.limit) h += `<div class="msg err">The best allowed fit lies on the constraint, not at a minimum, so <i>T</i><sub>m</sub> has no standard error. The data may not show a transition in this direction.</div>`;
+    h += `</div>`;
+  });
+  el.innerHTML = h || "No visible data sets.";
+}
+function resultsMatrix() {
+  if (!S.fit) {
+    const cols = DATA.series.filter(s => S.series[s.idx].visible && s.xs.length), B = cols.map(bands);
+    return [["Spectrum", ...cols.map(s => s.name)],
+      ["λ max (nm)", ...B.map(b => (b.hasPos ? fmtNum(b.xMax, 5) : "—"))], ["Value at max", ...B.map(b => fmtNum(b.yMax, 4))],
+      ["λ min (nm)", ...B.map(b => fmtNum(b.xMin, 5))], ["Value at min", ...B.map(b => fmtNum(b.yMin, 4))],
+      ["Crossover (nm)", ...B.map(b => (isFinite(b.cross) ? b.cross.toFixed(1) : "—"))],
+      ["Rpn", ...B.map(b => (isFinite(b.rpn) ? b.rpn.toFixed(3) : "—"))]];
+  }
+  if (!MODEL) return [["Parameter"]];
+  const cols = DATA.series.filter(s => S.series[s.idx].visible && FITS[s.idx] && !FITS[s.idx].error);
+  const rows = [["Parameter", ...cols.map(s => s.name)]];
+  MODEL.params.forEach((name, i) => {
+    const label = name.toLowerCase() === "tm" ? "Tm (°C)" : name;
+    rows.push([label, ...cols.map(s => { const f = FITS[s.idx]; return f.fixed[i] ? fmtNum(f.p[i]) + " (fixed)" : fmtPM(f.p[i], f.se[i]); })]);
+  });
+  const tmI = MODEL.keys.indexOf("tm");
+  if (tmI >= 0) rows.push(["Tm 95% CI", ...cols.map(s => { const c = FITS[s.idx].ci[tmI]; return c && isFinite(c[0]) ? `${c[0].toFixed(2)} to ${c[1].toFixed(2)}` : "—"; })]);
+  if (cols.some(s => isFinite(FITS[s.idx].step)))
+    rows.push(["Step at Tm (unfolded − native)", ...cols.map(s => { const f = FITS[s.idx]; return fmtNum(f.step, 3) + (f.dir ? (f.dir === "up" ? " (constrained ≥ 0)" : " (constrained ≤ 0)") : ""); })]);
+  rows.push(["R²", ...cols.map(s => FITS[s.idx].r2.toFixed(4))]);
+  rows.push(["Sy.x", ...cols.map(s => fmtNum(FITS[s.idx].syx, 3))]);
+  rows.push(["N", ...cols.map(s => String(FITS[s.idx].n))]);
+  return rows;
+}
+
+/* ============================ Refresh cycle ============================ */
+function refresh(refit) {
+  try { buildData(); } catch (e) { DATA = null; }
+  if (refit) {
+    if (!S.fit) { MODEL = null; $("eqMsg").className = "msg"; $("eqMsg").textContent = "Fitting is off: the data are plotted as they are."; }
+    else try { MODEL = compileModel(S.eqText); $("eqMsg").className = "msg"; $("eqMsg").textContent = "Parameters: " + MODEL.params.join(", "); }
+    catch (e) { MODEL = null; $("eqMsg").className = "msg err"; $("eqMsg").textContent = e.message; }
+    $("modelBox").style.opacity = S.fit ? "" : "0.45";
+    const canStep = stepSupported(MODEL);
+    $("stepDir").disabled = !canStep;
+    $("stepHint").innerHTML = canStep
+      ? "Holds the step between the unfolded and native baselines at <i>T</i><sub>m</sub> (CDU − CDN) to one sign, and keeps <i>T</i><sub>m</sub> inside the data. Use it when baseline drift is as large as the transition, so the fit could otherwise settle on the wrong feature."
+      : "Needs an equation that defines Tm, CDN and CDU, like the melting presets.";
+    runFits();
+    renderSeriesList();
+    renderStyleList();
+    renderParamTable();
+    renderResults();
+  }
+  $("preview").innerHTML = renderSVG({ interactive: true }).svg;
+  const errs = FITS.filter(f => f && f.error).length, ok = FITS.filter(f => f && !f.error);
+  if (!DATA || !DATA.series.length) setStatus("Paste data in the Data tab, or load the example.");
+  else if (!S.fit) {
+    const parts = DATA.series.filter(s => S.series[s.idx].visible && s.xs.length).map(s => {
+      const b = bands(s);
+      return `${s.name}: ${b.hasPos ? "max " + fmtNum(b.xMax, 4) + ", " : "no positive band, "}min ${fmtNum(b.xMin, 4)} nm${isFinite(b.rpn) ? ", Rpn " + b.rpn.toFixed(3) : ""}`;
+    });
+    setStatus(parts.join(" · "), "ok");
+  }
+  else if (!MODEL) setStatus("Equation error — see the Model tab.", "err");
+  else if (errs) setStatus(`${errs} fit(s) failed — see Results.`, "err");
+  else if (ok.length) {
+    const tms = DATA.series.filter(s => FITS[s.idx] && !FITS[s.idx].error).map(s => paramValue(FITS[s.idx], "Tm")).filter(Boolean);
+    setStatus(tms.length ? "Tm = " + tms.map(t => fmtPM(t.v, t.se)).join(", ") + " °C" : `Fitted ${ok.length} data set(s).`, "ok");
+  }
+  store();
+}
+let refitTimer = null;
+function refreshSoon(refit) { clearTimeout(refitTimer); refitTimer = setTimeout(() => refresh(refit), 250); }
+
+/* ============================ Example data ============================ */
+function exampleData(mode = "melt") {
+  let seed = 7; const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const g = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
+  const fn = compileModel(PRESETS.cmp.text).fn;
+  if (mode === "spec") {   // triple helix at 4 °C (positive band ~225 nm) vs unfolded at 80 °C
+    const out = ["λ (nm)\tCMP-1 (4 °C)\tCMP-1 (80 °C)"];
+    for (let x = 190; x <= 260 + 1e-9; x += 0.5) {
+      const folded = 2.6 * g(x, 225, 7.5) - 38 * g(x, 197.5, 6.5) - 1.2 * g(x, 212, 10) + gauss() * 0.08;
+      const unfolded = -1.0 * g(x, 228, 9) - 22 * g(x, 196, 6.5) - 1.5 * g(x, 215, 10) + gauss() * 0.08;
+      out.push(`${x.toFixed(1)}\t${folded.toFixed(3)}\t${unfolded.toFixed(3)}`);
+    }
+    return out.join("\n");
+  }
+  if (mode === "uv") {     // hyperchromic transition: absorbance rises on unfolding
+    const out = ["T (°C)\tCMP-1\tCMP-2"];
+    for (let x = 10; x <= 80 + 1e-9; x += 1) {
+      const y1 = fn(x, [42.5, 0.6836, 0.0008, 0.656, 0.0005]) + gauss() * 0.002;
+      const y2 = fn(x, [33.0, 0.5936, 0.0008, 0.576, 0.0005]) + gauss() * 0.002;
+      out.push(`${x.toFixed(1)}\t${y1.toFixed(4)}\t${y2.toFixed(4)}`);
+    }
+    return out.join("\n");
+  }
+  const lines = ["T (°C)\tCMP-1\tCMP-2"];
+  for (let x = 10; x <= 60 + 1e-9; x += 1) {
+    const y1 = fn(x, [42.5, 38.75, -0.11, 16.0, -0.005]) + gauss() * 0.07;
+    const y2 = fn(x, [33.0, 36.5, -0.105, 15.2, -0.006]) + gauss() * 0.07;
+    lines.push(`${x.toFixed(1)}\t${y1.toFixed(3)}\t${y2.toFixed(3)}`);
+  }
+  return lines.join("\n");
+}
+
+/* ============================ Bind form ============================ */
+const FMT_FIELDS = ["xTitle", "yTitle", "xScale", "yScale", "xMin", "xMax", "xStep", "xMinor", "yMin", "yMax", "yStep", "yMinor", "plotW", "plotH", "fontSize", "fontFamily", "markerSize", "lineW", "axisW", "legend", "exportCm", "exportFmt"];
+const FMT_CHECKS = ["showPoints", "showCurve", "connect", "zeroLine", "curveAxis", "legendTm", "tmLine", "hollow"];
+function loadForm() {
+  $("data").value = S.dataText; $("yMult").value = S.yMult; $("xFrom").value = S.xFrom; $("xTo").value = S.xTo;
+  $("eq").value = S.eqText; $("fitOn").checked = !!S.fit; $("stepDir").value = S.stepDir || "any";
+  document.querySelectorAll("#modes button").forEach(b => b.classList.toggle("active", b.dataset.mode === S.mode));
+  $("dataHint").textContent = (MODES[S.mode] || MODES.melt).hint;
+  document.body.classList.toggle("nofit", !S.fit);
+  const match = Object.keys(PRESETS).find(k => PRESETS[k].text.trim() === S.eqText.trim());
+  $("preset").value = match || "custom";
+  FMT_FIELDS.forEach(k => { $(k).value = S.fmt[k] ?? ""; });
+  FMT_CHECKS.forEach(k => { $(k).checked = !!S.fmt[k]; });
+}
+function applyState(obj) {
+  const mode = MODES[obj.mode] ? obj.mode : "melt";   // graphs saved before modes existed are CD melting
+  S = { ...baseState(mode), ...obj, mode, fmt: { ...modeFmt(mode), ...(obj.fmt || {}) } };
+  S.series = S.series || []; S.params = S.params || {};
+  // repair "Â°"/"Â±" left in data saved while version 1.1.2 had mis-encoded text
+  if (typeof S.dataText === "string" && /Â[°±]/.test(S.dataText)) S.dataText = S.dataText.replace(/Â([°±])/g, "$1");
+  loadForm(); refresh(true);
+}
+function switchMode(mode) {
+  if (!MODES[mode] || mode === S.mode) return;
+  MODE_STORE[S.mode] = clone(S);
+  applyState(MODE_STORE[mode] || modeDefaults(mode));
+}
+// A graph from the document opens in its own mode; the work in the current mode is kept.
+function loadGraphState(obj) {
+  const mode = MODES[obj.mode] ? obj.mode : "melt";
+  if (obj.stepDir === undefined) obj = { ...obj, stepDir: "any" };   // graphs made before 1.4 keep their unconstrained fit
+  if (mode !== S.mode) MODE_STORE[S.mode] = clone(S);
+  applyState(obj);
+}
+function initUI() {
+  const sel = $("preset");
+  sel.innerHTML = Object.entries(PRESETS).map(([k, p]) => `<option value="${k}">${esc(p.label)}</option>`).join("") + `<option value="custom">Custom equation</option>`;
+  sel.onchange = () => { if (PRESETS[sel.value]) { S.eqText = PRESETS[sel.value].text; $("eq").value = S.eqText; refresh(true); } };
+  $("eq").oninput = () => {
+    S.eqText = $("eq").value;
+    const match = Object.keys(PRESETS).find(k => PRESETS[k].text.trim() === S.eqText.trim());
+    sel.value = match || "custom"; refreshSoon(true);
+  };
+  document.querySelectorAll("#modes button").forEach(b => b.onclick = () => switchMode(b.dataset.mode));
+  $("fitOn").onchange = () => { S.fit = $("fitOn").checked; document.body.classList.toggle("nofit", !S.fit); refresh(true); };
+  $("stepDir").onchange = () => { S.stepDir = $("stepDir").value; refresh(true); };
+  $("data").oninput = () => { S.dataText = $("data").value; refreshSoon(true); };
+  ["yMult", "xFrom", "xTo"].forEach(k => $(k).oninput = () => { S[k] = $(k).value; refreshSoon(true); });
+  FMT_FIELDS.forEach(k => $(k).oninput = () => { S.fmt[k] = $(k).value; refreshSoon(false); });
+  FMT_CHECKS.forEach(k => $(k).onchange = () => { S.fmt[k] = $(k).checked; refresh(false); });
+  $("btnResetFmt").onclick = () => {
+    S.fmt = modeFmt(S.mode);
+    S.series.forEach(c => { delete c.shape; delete c.fill; delete c.size; delete c.line; });
+    loadForm(); refresh(false); renderStyleList();
+  };
+
+  document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => {
+    document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x === b));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + b.dataset.tab));
+  });
+
+  $("btnFit").onclick = () => { refresh(true); };
+  $("btnExample").onclick = () => { S.dataText = exampleData(S.mode); S.series = []; $("data").value = S.dataText; refresh(true); };
+  $("btnClear").onclick = () => { S.dataText = ""; S.series = []; $("data").value = ""; refresh(true); };
+  $("btnFile").onclick = () => $("file").click();
+  $("file").onchange = async () => {
+    const f = $("file").files[0]; if (!f) return;
+    S.dataText = await f.text(); S.series = []; $("data").value = S.dataText; refresh(true); $("file").value = "";
+  };
+  $("btnCopy").onclick = async () => {
+    if (!DATA || !DATA.series.length) return;
+    const text = resultsMatrix().map(r => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    setStatus("Results copied — paste into Excel or Word.", "ok");
+  };
+  $("btnPng").onclick = async () => {
+    const { svg, width, height } = renderSVG();
+    const scale = (S.fmt.exportCm / 2.54 * (S.fmt.exportFmt === "png600" ? 600 : 300)) / width;
+    download(await svgToPngDataUrl(svg, width, height, scale), "cdfit-graph.png");
+  };
+  $("btnSvg").onclick = () => {
+    const { svg } = renderSVG();
+    download(URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })), "cdfit-graph.svg");
+  };
+  $("btnInsert").onclick = () => wordAction(() => insertGraph(false), "Graph inserted.");
+  $("btnReplace").onclick = () => wordAction(() => insertGraph(true), "Graph updated.");
+  $("btnLoad").onclick = () => wordAction(loadFromSelectedGraph, "Graph loaded — edit and click “Update selected graph”.");
+  $("btnLinkedSave").onclick = () => wordAction(() => insertGraph(true), "Saved into the graph.");
+  $("btnTable").onclick =() => wordAction(insertResultsTable, "Results table inserted.");
+  $("btnImport").onclick = () => wordAction(importTable, "Data imported from the document.");
+}
+function download(url, name) { const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+
+/* ============================ Word integration ============================ */
+async function wordAction(fn, okMsg) {
+  try { setStatus("Working…"); await fn(); setStatus(okMsg, "ok"); }
+  catch (e) { console.error(e); setStatus((e && e.message) || String(e), "err"); }
+}
+function summaryText() {
+  const parts = (DATA ? DATA.series : []).filter(s => S.series[s.idx].visible).map(s => {
+    const tm = paramValue(FITS[s.idx], "Tm");
+    if (!S.fit) { const b = bands(s); return b && isFinite(b.rpn) ? `${s.name}: Rpn = ${b.rpn.toFixed(3)}` : s.name; }
+    return tm ? `${s.name}: Tm = ${fmtPM(tm.v, tm.se)} °C` : s.name;
+  });
+  const kind = { melt: "CD melting curve fitted", spec: "CD spectrum plotted", uv: "UV melting curve fitted" }[S.mode] || "Graph made";
+  return `${kind} with CD Fit. ` + parts.join("; ");
+}
+// Plain copy of the plotted data for the picture's alt text: readable and copyable into Excel in
+// any Word, without CD Fit. Semicolon-separated because Word turns tabs in alt text into spaces
+// when it saves; keeps the decimal separator the data were pasted with.
+function dataTableText() {
+  const p = parseData(S.dataText);
+  const mult = isFinite(parseFloat(S.yMult)) ? parseFloat(S.yMult) : 1;
+  const comma = /\d,\d/.test(S.dataText) && !/\d\.\d/.test(S.dataText);
+  const num = (v) => { const s = String(Number(v.toPrecision(10))); return comma ? s.replace(".", ",") : s; };
+  const cols = p.names.map((n, j) => j).filter(j => !S.series[j] || S.series[j].visible);
+  const head = [p.xName || "X", ...cols.map(j => (S.series[j] && S.series[j].name) || p.names[j])];
+  const cell = (s) => String(s).replace(/;/g, ",");
+  const rows = p.rows.map(r => [num(r[0]), ...cols.map(j => (isFinite(r[j + 1]) ? num(r[j + 1] * mult) : ""))].join(";"));
+  const note = mult !== 1 ? `, Y values multiplied by ${mult}` : "";
+  return `DATA (columns separated by ;${note}). Copy the lines below into Excel, then Data > Text to Columns > Delimited > Semicolon.\n` +
+    [head.map(cell).join(";"), ...rows].join("\n");
+}
+async function insertGraph(replace) {
+  if (!DATA || !DATA.series.length) throw new Error("No data to plot.");
+  const { svg, width, height } = renderSVG();
+  if (S.fmt.exportFmt === "svg") {
+    if (!Office.context.requirements.isSetSupported("ImageCoercion", "1.2")) throw new Error("This version of Word cannot insert SVG — choose a PNG format.");
+    await new Promise((res, rej) => Office.context.document.setSelectedDataAsync(svg, { coercionType: Office.CoercionType.XmlSvg },
+      r => (r.status === Office.AsyncResultStatus.Succeeded ? res() : rej(r.error))));
+    return;
+  }
+  const dpi = S.fmt.exportFmt === "png600" ? 600 : 300, cm = +S.fmt.exportCm || 12;
+  const url = await svgToPngDataUrl(svg, width, height, (cm / 2.54 * dpi) / width);
+  const b64 = url.slice(url.indexOf(",") + 1);
+  const state = JSON.stringify(S);
+  const id = Math.random().toString(36).slice(2, 10);
+  await saveBackup(id, state);
+  await Word.run(async (ctx) => {
+    const sel = ctx.document.getSelection();
+    let pic;
+    if (replace) {
+      const old = sel.inlinePictures.getFirstOrNullObject();
+      old.load("altTextTitle");
+      await ctx.sync();
+      if (old.isNullObject) throw new Error("Click a graph picture in the document first.");
+      const t = old.altTextTitle || "", m = t.indexOf(GRAPH_TITLE);
+      if (m >= 0) { try { Office.context.document.settings.remove("cdfit:" + t.slice(m + GRAPH_TITLE.length).trim()); } catch (e) {} }
+      pic = old.insertInlinePictureFromBase64(b64, "Replace");
+    } else {
+      pic = sel.insertInlinePictureFromBase64(b64, "End");
+    }
+    pic.lockAspectRatio = true;
+    pic.width = cm / 2.54 * 72;
+    pic.altTextTitle = GRAPH_TITLE + id;
+    pic.altTextDescription = summaryText() + "\n\n" + dataTableText() + "\n\n---- CD Fit settings (used by the add-in) ----\n" + TAG + state;
+    await ctx.sync();
+  });
+  if (replace) { try { Office.context.document.settings.saveAsync(() => {}); } catch (e) {} }
+  if (replace) { selectedJson = state; setLinked(true); } // still selected; a new graph loads when clicked
+}
+
+/* Graph data lives in the picture itself (alt text), with a backup copy in the
+   document's add-in settings keyed by the graph id, in case Word trims long alt text. */
+const GRAPH_TITLE = "CD Fit graph #";
+function saveBackup(id, state) {
+  return new Promise((res) => {
+    try {
+      Office.context.document.settings.set("cdfit:" + id, state);
+      // a document with CD Fit graphs reopens the panel when opened, so clicking a graph always shows its data
+      Office.context.document.settings.set("Office.AutoShowTaskpaneWithDocument", true);
+      Office.context.document.settings.saveAsync(() => res());
+    } catch (e) { res(); }
+  });
+}
+// Returns the saved JSON of the selected CD Fit graph, "" for a non-CD Fit picture, or null if no picture is selected.
+async function readSelectedGraph() {
+  let title = "", desc = "", found = false;
+  await Word.run(async (ctx) => {
+    const pic = ctx.document.getSelection().inlinePictures.getFirstOrNullObject();
+    pic.load("altTextTitle,altTextDescription");
+    await ctx.sync();
+    if (pic.isNullObject) return;
+    found = true; title = pic.altTextTitle || ""; desc = pic.altTextDescription || "";
+  });
+  if (!found) return null;
+  const k = desc.indexOf(TAG);
+  if (k >= 0) { const json = desc.slice(k + TAG.length); try { JSON.parse(json); return json; } catch (e) {} }
+  const m = title.indexOf(GRAPH_TITLE);
+  if (m >= 0) { try { const v = Office.context.document.settings.get("cdfit:" + title.slice(m + GRAPH_TITLE.length).trim()); if (v) return v; } catch (e) {} }
+  return "";
+}
+async function loadFromSelectedGraph() {
+  const json = await readSelectedGraph();
+  if (json === null) throw new Error("Click a graph picture in the document first.");
+  if (!json) throw new Error("This picture was not made by CD Fit (no saved data).");
+  selectedJson = json;
+  loadGraphState(JSON.parse(json));
+  setLinked(true);
+}
+
+/* Clicking a CD Fit graph in the document shows its data here automatically.
+   selectedJson is the graph that is currently selected, so edits made in the panel
+   survive while it stays selected and are replaced when a graph is clicked again. */
+let selectedJson = null, selTimer = null, selBusy = false;
+function setLinked(on) { $("linked").classList.toggle("show", !!on); }
+function showTab(name) {
+  document.querySelectorAll("nav.tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll("section.tab").forEach(s => s.classList.toggle("active", s.id === "tab-" + name));
+}
+function onSelectionChanged() {
+  clearTimeout(selTimer);
+  selTimer = setTimeout(async () => {
+    if (selBusy) { onSelectionChanged(); return; }
+    selBusy = true;
+    try {
+      const json = await readSelectedGraph();
+      if (!json) { selectedJson = null; setLinked(false); return; }
+      if (json !== selectedJson) {
+        selectedJson = json;
+        loadGraphState(JSON.parse(json));
+        showTab("data");
+        setStatus("Loaded the data saved in the selected graph.", "ok");
+      }
+      setLinked(true);
+    } catch (e) { console.warn(e); }
+    finally { selBusy = false; }
+  }, 200);
+}
+let selWatching = false;
+function watchSelection() {
+  if (selWatching) return;
+  selWatching = true;
+  Office.context.document.addHandlerAsync(Office.EventType.DocumentSelectionChanged, onSelectionChanged);
+}
+async function insertResultsTable() {
+  if (!DATA || !DATA.series.length) throw new Error("Nothing to report yet.");
+  const rows = resultsMatrix();
+  if (rows[0].length < 2) throw new Error(S.fit ? "No successful fits to report." : "No spectra to report.");
+  await Word.run(async (ctx) => {
+    const para = ctx.document.getSelection().paragraphs.getLast();
+    const t = para.insertTable(rows.length, rows[0].length, "After", rows);
+    t.headerRowCount = 1;
+    t.font.size = 10;
+    await ctx.sync();
+  });
+}
+async function importTable() {
+  let text = "";
+  await Word.run(async (ctx) => {
+    const sel = ctx.document.getSelection();
+    const inside = sel.parentTableOrNullObject;
+    const within = sel.tables.getFirstOrNullObject();
+    inside.load("values"); within.load("values"); sel.load("text");
+    await ctx.sync();
+    const t = !within.isNullObject ? within : !inside.isNullObject ? inside : null;
+    text = t ? t.values.map(r => r.map(c => c.trim()).join("\t")).join("\n") : sel.text;
+  });
+  if (!text.trim()) throw new Error("Select a table (or tab-separated text) in the document first.");
+  S.dataText = text; S.series = []; $("data").value = text; refresh(true);
+}
+
+/* ============================ Self-update ============================ */
+// GitHub Pages lets browsers cache pages for 10 minutes; if a newer version is live, reload it under a fresh URL.
+const APP_VERSION = "1.4.2";
+window.addEventListener("error", (e) => setStatus("Error: " + (e.message || e.error), "err"));
+window.addEventListener("unhandledrejection", (e) => setStatus("Error: " + ((e.reason && e.reason.message) || e.reason), "err"));
+
+/* ============================ Start ============================ */
+function markWord() {
+  document.body.classList.add("in-word"); $("hostLabel").textContent = "Word · v" + APP_VERSION;
+  try { watchSelection(); onSelectionChanged(); } catch (e) { console.warn(e); }
+}
+function start(inWord) {
+  if (inWord) markWord();
+  initUI();
+  const saved = restoreStored();
+  if (saved && saved.current) { MODE_STORE = saved.others || {}; applyState(saved.current); }
+  else applyState(modeDefaults("melt"));
+}
+let started = false;
+function startOnce(inWord) { if (!started) { started = true; start(inWord); } }
+if (typeof Office !== "undefined" && Office.onReady) {
+  Office.onReady(info => {
+    const w = !!info && info.host === Office.HostType.Word;
+    if (started) { if (w) markWord(); } else startOnce(w);
+  });
+  setTimeout(() => startOnce(false), 5000); // office.js failed to initialise: run in browser mode
+} else {
+  startOnce(false);
+}
+</script>
+<script>
+"use strict";
+/* Page additions around the add-in's script: files saved through the viewer, Ask Claude, the example-data note.
+   CDFIT_AFTER_REFRESH and cdfitFiles are shared with derivatives.js, which runs after this script. */
+const CDFIT_AFTER_REFRESH = [];
+const cdfitFiles = {
+  save: null,   // set once the viewer can save files
+  pngBlob(svg, w, h) {
+    const dpi = S.fmt.exportFmt === "png600" ? 600 : 300, cm = +S.fmt.exportCm || 12, scale = (cm / 2.54 * dpi) / w;
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = Math.round(w * scale); c.height = Math.round(h * scale);
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob((b) => (b ? resolve(b) : reject(new Error("The PNG could not be made."))), "image/png");
+      };
+      img.onerror = () => reject(new Error("The PNG could not be made."));
+      img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    });
+  },
+  stem() {
+    const names = (DATA ? DATA.series : []).filter((s) => S.series[s.idx] && S.series[s.idx].visible).map((s) => s.name);
+    const base = { melt: "CD melt", spec: "CD spectrum", uv: "UV melt" }[S.mode] || "CD Fit";
+    return (base + (names.length ? " - " + names.slice(0, 3).join(", ") : "")).replace(/[\\/:*?"<>|]+/g, "").slice(0, 80);
+  },
+};
+
+// A name shown literally in graph markup (*italic*, ^{sup}, _{sub})
+const cdfitMarkupEscape = (s) => String(s).replace(/[\\*^_{}]/g, (c) => "\\" + c);
+
+// Fit a state that is not on screen with the add-in's own functions, then put the live page state back.
+// Results are kept per state, so typing refits only once.
+const cdfitFitState = (function () {
+  const fitted = new Map();
+  const keyOf = (st) => JSON.stringify([st.mode, st.dataText, st.eqText, st.params, st.xFrom, st.xTo, st.yMult,
+    st.stepDir, st.fit, (st.series || []).map((c) => c && [c.visible, c.name, c.color])]);
+  return function (st) {
+    const key = keyOf(st);
+    if (fitted.has(key)) return fitted.get(key);
+    const live = [S, DATA, MODEL, FITS];
+    let out = null;
+    try {
+      S = JSON.parse(JSON.stringify(st));
+      buildData();
+      MODEL = S.fit ? compileModel(S.eqText) : null;
+      runFits();
+      out = { st: S, data: DATA, model: MODEL, fits: FITS };
+    } catch (e) {
+      out = null;
+    } finally {
+      [S, DATA, MODEL, FITS] = live;
+    }
+    fitted.set(key, out);
+    if (fitted.size > 8) fitted.delete(fitted.keys().next().value);
+    return out;
+  };
+})();
+
+(function () {
+  const cl = window.claude && typeof window.claude.use === "function" ? window.claude : null;
+  const use = (name) => (cl ? cl.use(name).catch(() => null) : Promise.resolve(null));
+
+  // Note while the example data is loaded; other page parts redraw after every refresh
+  const examples = {};
+  const badge = $("exampleBadge");
+  const markExample = () => {
+    if (!(S.mode in examples)) examples[S.mode] = exampleData(S.mode).trim();
+    badge.hidden = (S.dataText || "").trim() !== examples[S.mode];
+  };
+  const baseRefresh = refresh;
+  refresh = function (refit) {
+    baseRefresh(refit);
+    markExample();
+    for (const f of CDFIT_AFTER_REFRESH) { try { f(); } catch (e) { console.warn(e); } }
+  };
+  markExample();
+
+  $("btnCopyTop").onclick = () => $("btnCopy").click();
+
+  // PNG and SVG, saved through the viewer, which asks the viewer to confirm each file
+  const saveButtons = () => document.querySelectorAll(".needs-downloads");
+  use("downloads").then((downloads) => {
+    if (!downloads) return;
+    saveButtons().forEach((b) => { b.hidden = false; });
+    const gone = ["unavailable", "not_granted", "capability_disabled", "capability_removed"];
+    cdfitFiles.save = async (filename, data) => {
+      try {
+        await downloads.save({ filename, data });
+        setStatus("Saved " + filename + ".", "ok");
+      } catch (e) {
+        const code = e && e.code;
+        if (code === "declined") return;
+        if (gone.includes(code)) {
+          saveButtons().forEach((b) => { b.hidden = true; });
+          setStatus("Saving files is not available in this view.", "err");
+          return;
+        }
+        setStatus(code === "rate_limited" ? "Another save is waiting for your answer." : "The file could not be saved.", "err");
+      }
+    };
+    $("btnPng").onclick = async () => {
+      if (!DATA || !DATA.series.length) { setStatus("Add data first.", "err"); return; }
+      const { svg, width, height } = renderSVG();
+      try { await cdfitFiles.save(cdfitFiles.stem() + ".png", await cdfitFiles.pngBlob(svg, width, height)); }
+      catch (e) { setStatus(e.message, "err"); }
+    };
+    $("btnSvg").onclick = () => {
+      if (!DATA || !DATA.series.length) { setStatus("Add data first.", "err"); return; }
+      cdfitFiles.save(cdfitFiles.stem() + ".svg", renderSVG().svg);
+    };
+  });
+
+  // Ask Claude about this fit (the viewer's own Claude, on a click)
+  const RULES = [
+    "You are helping a scientist judge a fit made in CD Fit, a tool for circular dichroism (CD) and UV melting curves and CD spectra of collagen model peptides (CMPs).",
+    "In the default CMP model the triple helix (a trimer) melts into 3 monomers with ΔH fixed at -500 kJ/mol and sloping baselines; Tm is the midpoint at the measured concentration, and REFN/DEN and REFU/DEU are the native and unfolded baselines (intercept and slope per kelvin).",
+    "Check the results against the data: baseline drift or artefacts the model cannot follow, a transition cut off at the edge of the data, poorly defined baselines, a step in the wrong direction (CD at 225 nm falls on unfolding, UV absorbance rises), residual scatter (Sy.x) larger than the point-to-point noise, parameters with huge errors.",
+    "Answer in plain text without Markdown headings, at most 150 words: a one-line verdict, then only the points that matter, each with a concrete fix using the page's controls (Data tab: Exclude X outside; Model tab: Transition direction, fixing a parameter, another preset). Do not repeat the whole results table and do not invent measurements.",
+  ].join(" ");
+  const DEFAULT_Q = "Is this fit trustworthy, and is there anything I should change?";
+  const fitContext = () => {
+    const out = ["Mode: " + (MODES[S.mode] || MODES.melt).label + "."];
+    if (S.fit && MODEL) {
+      const preset = Object.keys(PRESETS).find((k) => PRESETS[k].text.trim() === S.eqText.trim());
+      out.push("Model: " + (preset ? PRESETS[preset].label : "custom equation") + ". Equation in Prism syntax (X in the first data column):\n" + S.eqText.trim());
+      const dir = { up: "the signal must rise on unfolding", down: "the signal must fall on unfolding" }[S.stepDir];
+      out.push("Transition direction constraint: " + (dir || "none, either direction") + ".");
+      const set = Object.entries(S.params || {}).filter(([, c]) => c && (c.fixed || String(c.value || "").trim() !== ""));
+      if (set.length) out.push("Parameter settings: " + set.map(([k, c]) => k + (c.fixed ? " fixed at " : " starts at ") + c.value).join("; ") + ".");
+    } else if (S.fit) {
+      out.push("The equation has an error, so nothing was fitted.");
+    } else {
+      out.push("No model is fitted: the page reports spectrum features (maximum, minimum, zero crossing, Rpn = max/|min|).");
+    }
+    if (S.xFrom !== "" || S.xTo !== "") out.push("Only points with X from " + (S.xFrom === "" ? "the start" : S.xFrom) + " to " + (S.xTo === "" ? "the end" : S.xTo) + " are fitted; the rest are shown faded.");
+    const mult = parseFloat(S.yMult);
+    if (isFinite(mult) && mult !== 1) out.push("Y values were multiplied by " + S.yMult + ".");
+    if (DATA && DATA.series.length) {
+      out.push("Results as the page reports them (tab-separated):\n" + resultsMatrix().map((r) => r.join("\t")).join("\n"));
+      const notes = [];
+      DATA.series.forEach((s, j) => {
+        const f = FITS[j];
+        if (!f || !S.series[j] || !S.series[j].visible) return;
+        if (f.error) { notes.push(s.name + ": the fit failed (" + f.error + ")."); return; }
+        if (f.avoided) notes.push(s.name + ": without the direction constraint the fit " + (f.avoided.outside ? "puts Tm outside the data" : "has the opposite step") + " (Tm " + fmtNum(f.avoided.tm, 4) + " °C).");
+        if (f.limit) notes.push(s.name + ": the best allowed fit lies on the constraint, so Tm has no standard error.");
+        if (!f.converged) notes.push(s.name + ": the fit did not converge.");
+        if (f.ambiguous) notes.push(s.name + ": the parameters are not identifiable.");
+      });
+      if (notes.length) out.push("Warnings shown on the page:\n" + notes.join("\n"));
+      const text = S.dataText.length > 12000 ? S.dataText.slice(0, 12000) + "\n[rest of the data cut off]" : S.dataText;
+      out.push("The data as entered (first column X, then one column per data set):\n" + text);
+    }
+    if (typeof cdfitDerivatives !== "undefined") {
+      const d = cdfitDerivatives.summary();
+      if (d) out.push("Derivatives of the CD and UV fits, as fraction unfolded alpha (°C; the peak of d(alpha)/dT is where d2(alpha)/dT2 crosses zero; dY/dT is the raw fitted signal):\n" + d);
+    }
+    return out.join("\n\n");
+  };
+  const ASK_COPY = {
+    rate_limited: "Too many requests right now. Try again in a minute.",
+    session_expired: "Sign in to Claude again, then ask again.",
+    refused: "Claude declined this request. Try a different question.",
+    empty_completion: "Claude returned no answer. Try a shorter question.",
+    prompt_too_large: "The data are too long to send. Exclude some points or columns, then ask again.",
+  };
+  const askBox = $("ask"), askBtn = $("askBtn"), stopBtn = $("askStop"), askOut = $("askOut"), askNote = $("askNote");
+  use("sample").then((sample) => {
+    if (!sample) return;
+    askBox.hidden = false;
+    let ctl = null;
+    stopBtn.onclick = () => { if (ctl) ctl.abort(); };
+    askBtn.onclick = async () => {
+      if (!DATA || !DATA.series.length) { askNote.textContent = "Add data first."; return; }
+      ctl = new AbortController();
+      askBtn.disabled = true; stopBtn.hidden = false; askNote.textContent = "";
+      askOut.textContent = "Thinking…";
+      const q = $("askQ").value.trim() || DEFAULT_Q;
+      try {
+        const { truncated } = await sample(RULES + "\n\nQuestion: " + q + "\n\n" + fitContext(), {
+          signal: ctl.signal,
+          onText: ({ text }) => { askOut.textContent = text; },
+        });
+        if (truncated) askNote.textContent = "The answer was cut short. Ask a narrower question.";
+      } catch (e) {
+        const code = e && e.code;
+        askOut.textContent = (e && e.text) || "";
+        if (["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"].includes(code)) {
+          askBox.hidden = true;
+          setStatus("Asking Claude is not available in this view.", "err");
+        } else if (code !== "cancelled") {
+          askNote.textContent = ASK_COPY[code] || "The answer was interrupted. Ask again.";
+        }
+      } finally {
+        askBtn.disabled = false; stopBtn.hidden = true; ctl = null;
+      }
+    };
+  });
+})();
+</script>
+<script>
+"use strict";
+/* Stacked graph panels on one x axis, in the add-in's graph style, for the page's sections below the app.
+   opt = { xVals, xTitle, legendAt: "tl" | "tr", legend: [{label, color, dash, hollow}],
+           panels: [{ title, height (fraction of the graph height), axis: {min, max, step} | null, zero,
+                      lines: [{xs, ys, color, dash}], points: [{x, y, color, hollow}], vlines: [{x, color}] }] } */
+function cdfitPanels(opt) {
+  const F = S.fmt, fs = +F.fontSize || 16, fam = F.fontFamily || "Arial", tfs = fs * 1.06;
+  const pw = +F.plotW || 430, ph = +F.plotH || 290, tick = fs * 0.45, minorTick = tick * 0.55;
+  const aw = +F.axisW || 1.25, lw = +F.lineW > 0 ? +F.lineW : 2;
+  const P = opt.panels, hs = P.map((p) => Math.round(ph * (p.height || 0.6))), gap = Math.ceil(fs * 1.25);
+  const xa = makeAxis(opt.xVals, "", "", "", F.xMinor, false, !!opt.xPad);
+  const str = (v) => (v === undefined || v === null ? "" : String(v));
+  const ya = P.map((p) => {
+    const vals = p.lines.flatMap((l) => l.ys).concat(p.points.map((q) => q.y)).filter(isFinite);
+    const a = p.axis || {};
+    return makeAxis(vals.length ? vals : [0, 1], str(a.min), str(a.max), str(a.step), 1, false, true);
+  });
+  const labW = Math.max(...ya.map((ax) => Math.max(...ax.ticks.map((v) => markupWidth(ax.label(v), fs, fam)))));
+  const ml = Math.ceil(tick + 5 + labW + 10 + tfs * 1.05 + 8), mt = Math.ceil(fs * 0.7);
+  const mr = Math.ceil(Math.max(12, markupWidth(xa.label(xa.ticks[xa.ticks.length - 1]), fs, fam) / 2 + 6));
+  const mb = Math.ceil(tick + 5 + fs + 8 + tfs * 1.1 + 8);
+  const tops = [];
+  hs.forEach((h, k) => tops.push(k ? tops[k - 1] + hs[k - 1] + gap : mt));
+  const W = ml + pw + mr, H = tops[tops.length - 1] + hs[hs.length - 1] + mb;
+  const X = (v) => ml + xa.frac(v) * pw, f = (v) => v.toFixed(2);
+  const dashAttr = (d) => (d ? ` stroke-dasharray="${d}"` : "");
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="${esc(fam)}" font-size="${fs}">`;
+  s += `<rect width="${W}" height="${H}" fill="#ffffff"/><defs>`;
+  tops.forEach((t, k) => { s += `<clipPath id="pclip${k}"><rect x="${ml}" y="${t - 2}" width="${pw + 2}" height="${hs[k] + 4}"/></clipPath>`; });
+  s += "</defs>";
+  P.forEach((p, k) => {
+    const ax = ya[k], top = tops[k], h = hs[k], by = top + h, Y = (v) => top + h - ax.frac(v) * h;
+    const last = k === P.length - 1;
+    if (p.zero && ax.min < 0 && ax.max > 0)
+      s += `<line x1="${ml}" y1="${f(Y(0))}" x2="${f(ml + pw)}" y2="${f(Y(0))}" stroke="#000000" stroke-width="${f(aw * 0.6)}" stroke-dasharray="3,3" opacity="0.55"/>`;
+    for (const v of p.vlines || []) {
+      if (v.x >= xa.min && v.x <= xa.max)
+        s += `<line x1="${f(X(v.x))}" y1="${top}" x2="${f(X(v.x))}" y2="${f(by)}" stroke="${v.color}" stroke-width="1" stroke-dasharray="2,3" opacity="0.85"/>`;
+    }
+    s += `<g clip-path="url(#pclip${k})" fill="none" stroke-width="${lw}" stroke-linejoin="round">`;
+    for (const l of p.lines) {
+      let d = "";
+      l.xs.forEach((x, i) => {
+        const px = X(x), py = Y(l.ys[i]);
+        if (isFinite(px) && isFinite(py)) d += (d ? "L" : "M") + f(px) + "," + f(Math.max(-1e4, Math.min(1e4, py)));
+      });
+      if (d) s += `<path d="${d}" stroke="${l.color}"${dashAttr(l.dash)}/>`;
+    }
+    s += "</g>";
+    for (const q of p.points) {
+      if (!isFinite(q.x) || !isFinite(q.y) || q.x < xa.min || q.x > xa.max || q.y < ax.min || q.y > ax.max) continue;
+      const r = q.r || 2.6;
+      s += `<circle cx="${f(X(q.x))}" cy="${f(Y(q.y))}" r="${r}" fill="${q.hollow ? "#ffffff" : q.color}" stroke="${q.color}" stroke-width="${q.hollow ? 1.2 : 0.5}" opacity="${q.opacity || 0.8}"/>`;
+    }
+    s += `<g stroke="#000000" stroke-width="${aw}" fill="none" stroke-linecap="square">`;
+    s += `<line x1="${ml}" y1="${f(by)}" x2="${f(ml + pw)}" y2="${f(by)}"/><line x1="${ml}" y1="${top}" x2="${ml}" y2="${f(by)}"/>`;
+    xa.ticks.forEach((v) => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + tick)}"/>`; });
+    xa.minor.forEach((v) => { s += `<line x1="${f(X(v))}" y1="${f(by)}" x2="${f(X(v))}" y2="${f(by + minorTick)}"/>`; });
+    ax.ticks.forEach((v) => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - tick)}" y2="${f(Y(v))}"/>`; });
+    ax.minor.forEach((v) => { s += `<line x1="${ml}" y1="${f(Y(v))}" x2="${f(ml - minorTick)}" y2="${f(Y(v))}"/>`; });
+    s += `</g><g fill="#000000">`;
+    if (last) xa.ticks.forEach((v) => { s += `<text x="${f(X(v))}" y="${f(by + tick + 5 + fs * 0.78)}" text-anchor="middle">${markupTspans(xa.label(v), fs)}</text>`; });
+    ax.ticks.forEach((v) => { s += `<text x="${f(ml - tick - 5)}" y="${f(Y(v) + fs * 0.36)}" text-anchor="end">${markupTspans(ax.label(v), fs)}</text>`; });
+    const tx = ml - tick - 5 - labW - 10 - tfs * 0.25;
+    s += `<text transform="translate(${f(tx)},${f(top + h / 2)}) rotate(-90)" x="0" y="0" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(p.title, tfs)}</text>`;
+    if (last) s += `<text x="${f(ml + pw / 2)}" y="${f(by + tick + 5 + fs + 8 + tfs * 0.8)}" text-anchor="middle" font-size="${f(tfs)}">${markupTspans(opt.xTitle, tfs)}</text>`;
+    s += "</g>";
+  });
+  const items = opt.legend || [];
+  if (items.length) {
+    const lfs = fs * 0.8, lh = lfs * 1.45, sym = lfs * 2.2;   // labels are markup: escape names with cdfitMarkupEscape
+    const wide = Math.max(...items.map((it) => markupWidth(it.label, lfs, fam)));
+    const lx = opt.legendAt === "tr" ? ml + pw - 10 - sym - wide : ml + 14, ly = tops[0] + 8;
+    s += `<g font-size="${f(lfs)}">`;
+    items.forEach((it, k) => {
+      const cy = ly + lh * k + lh / 2;
+      s += `<line x1="${f(lx)}" y1="${f(cy)}" x2="${f(lx + sym * 0.8)}" y2="${f(cy)}" stroke="${it.color}" stroke-width="${lw}"${dashAttr(it.dash)}/>`;
+      s += `<circle cx="${f(lx + sym * 0.4)}" cy="${f(cy)}" r="3" fill="${it.hollow ? "#ffffff" : it.color}" stroke="${it.color}" stroke-width="1.2"/>`;
+      s += `<text x="${f(lx + sym)}" y="${f(cy + lfs * 0.36)}">${markupTspans(it.label, lfs)}</text>`;
+    });
+    s += "</g>";
+  }
+  return { svg: s + "</svg>", width: W, height: H };
+}
+</script>
+<script>
+"use strict";
+/* Open or drop several files at once: each file's data become columns of one table, matched by X.
+   Spectrometer files are read as such. A JASCO export keeps its CD channel. A Chirascan (Pro-Data) CSV keeps its
+   CircularDichroism block, or its Absorbance block in UV melting. From a scan at several wavelengths, or from
+   spectra named with their temperatures, the melting modes take the signal at one wavelength (225 nm unless
+   changed) against temperature, and CD spectrum mode takes one spectrum per temperature. */
+const cdfitImport = (function () {
+  const LAMBDA_KEY = "cdfit.page.lambda";
+  const HT = /\b(?:HT|HV)\b|volt|dynode/i;   // detector voltage channels, not signal
+  const WAVE_HINT = /nm\b|nanomet|wave\s*length|λ/i;
+  const TEMP_HINT = /temp|°\s*C|℃|celsius|kelvin|^\s*T\s*(?:[([]|$)/i;
+  const TIME_HINT = /time|\bmin\b|\bsec|\(s\)|\[s\]/i;
+
+  async function readText(file) {
+    const buf = new Uint8Array(await file.arrayBuffer());
+    if (buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder("utf-16le").decode(buf);
+    if (buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder("utf-16be").decode(buf);
+    const utf8 = new TextDecoder("utf-8").decode(buf);
+    if (!utf8.includes("\uFFFD")) return utf8.replace(/^\uFEFF/, "");
+    try { return new TextDecoder("windows-1250").decode(buf); } catch (e) { return utf8; }
+  }
+
+  /* Excel files, read with SheetJS (loaded from cdnjs the first time one is opened): the first sheet, cells joined by
+     tabs, numbers as JavaScript writes them, empty rows dropped, as the skill reads them. */
+  let sheetJs = null;
+  function loadSheetJs() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    sheetJs = sheetJs || new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+      s.onload = () => (window.XLSX ? resolve(window.XLSX) : reject(new Error("the Excel reader did not start")));
+      s.onerror = () => { sheetJs = null; reject(new Error("the Excel reader could not be loaded")); };
+      document.head.appendChild(s);
+    });
+    return sheetJs;
+  }
+  async function readXlsx(file) {
+    const X = await loadSheetJs();
+    const wb = X.read(new Uint8Array(await file.arrayBuffer()), { type: "array" });
+    const rows = X.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, blankrows: false, defval: "" });
+    return rows.map((r) => {
+      const cells = r.map((v) => (v === null || v === undefined ? "" : typeof v === "number" ? String(v) : String(v).replace(/[\t\n]/g, " ")));
+      while (cells.length && cells[cells.length - 1] === "") cells.pop();
+      return cells.join("\t");
+    }).filter((l) => l.trim()).join("\n");
+  }
+  const isExcel = (name) => /\.(xlsx|xlsm|xls)$/i.test(name);
+
+  // one line's cells, split the way parseData splits a whole table
+  const cellsOf = (l) => (l.includes("\t") ? l.split("\t") : l.includes(";") ? l.split(";")
+    : /\d,\d/.test(l) && /\s/.test(l.trim()) ? l.trim().split(/\s+/) : l.trim().split(/[\s,]+/));
+
+  // a comma-separated file as tab-separated, so that names with spaces ("CD 225 nm") stay whole
+  function csvToTabs(text) {
+    if (/[\t;]/.test(text)) return text;
+    const lines = text.replace(/\r/g, "").split("\n"), data = lines.filter((l) => /^\s*[-+]?\.?\d/.test(l));
+    if (!data.length || !data.every((l) => l.includes(",") && !/\S\s+\S/.test(l.trim().replace(/\s*,\s*/g, ",")))) return text;
+    return lines.map((l) => splitCsv(l).join("\t")).join("\n");
+  }
+  function splitCsv(l) {
+    const out = [];
+    let cur = "", quoted = false;
+    for (let i = 0; i < l.length; i++) {
+      const ch = l[i];
+      if (quoted) {
+        if (ch !== '"') cur += ch;
+        else if (l[i + 1] === '"') { cur += '"'; i++; }
+        else quoted = false;
+      } else if (ch === '"') quoted = true;
+      else if (ch === ",") { out.push(cur.trim()); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur.trim());
+    return out;
+  }
+
+  /* JASCO text export: header lines, XYDATA, the data, then an extended-information block. An export of spectra at
+     several temperatures starts its data with a row of temperatures under an empty first cell. */
+  function jasco(text) {
+    const lines = text.replace(/\r/g, "").split("\n");
+    const start = lines.findIndex((l) => l.trim().toUpperCase() === "XYDATA");
+    if (start < 0) return null;
+    const head = {};
+    for (const l of lines.slice(0, start)) {
+      const m = /^([^\t,;]+)[\t,;](.*)$/.exec(l);
+      if (m) head[m[1].trim().toUpperCase()] = m[2].trim();
+    }
+    const data = [];
+    let cols = null;
+    for (const l of lines.slice(start + 1)) {
+      if (!l.trim()) continue;
+      if (!data.length && !cols && /^[\t,;]/.test(l)) {
+        const c = l.split(/[\t,;]/).slice(1).map((s) => s.trim()).filter((s) => s !== "");
+        if (c.length && c.every((s) => isFinite(parseNum(s)))) { cols = c; continue; }
+      }
+      const cells = cellsOf(l.trim());
+      if (isNaN(parseNum(cells[0]))) break;
+      data.push(cells.map((s) => s.trim()).join("\t"));
+    }
+    const x = head.XUNITS || "X", xWave = WAVE_HINT.test(x);
+    const temp = (c) => (xWave && parseNum(c) >= -30 && parseNum(c) <= 130 ? c + " °C" : c);   // spectra under their temperatures
+    const names = cols ? [x, ...cols.map(temp)]
+      : [x, head.YUNITS || "Y"].concat(["Y2UNITS", "Y3UNITS"].filter((k) => head[k]).map((k) => head[k]));
+    return { text: [names.join("\t"), ...data].join("\n"), matrix: !!cols };
+  }
+
+  /* Chirascan (Applied Photophysics Pro-Data) CSV: "ProDataCSV", remarks such as "#Concentration: 200 uM", then
+     after "Data:" one block per property (CircularDichroism, HV, Absorbance, …). A spectrum block is "Wavelength,",
+     the property name, then wavelength,value rows. A scan block is the property name, "Temperature,Wavelength", a
+     row of wavelengths under an empty first cell, then one row per temperature. Saved through Excel, the cells are
+     tab-separated and "Wavelength," loses its comma. */
+  function chirascan(text) {
+    const lines = text.replace(/\r/g, "").split("\n");
+    if ((lines.find((l) => l.trim()) || "").replace(/[,;\s]+$/, "").trim() !== "ProDataCSV") return null;
+    const sep = /^[ ]*-?\d[^\n]*\t/m.test(text) ? "\t" : /^\s*-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?\s*;/m.test(text) ? ";" : ",";
+    const remark = (key) => {
+      const l = lines.find((s) => s.trim().toLowerCase().startsWith("#" + key.toLowerCase() + ":"));
+      return l ? l.trim().slice(key.length + 2).replace(/[,;\s]+$/, "").trim() : "";
+    };
+    const start = lines.findIndex((l) => /^\s*data\s*:?[\s,;]*$/i.test(l));
+    const blocks = [];
+    let cur = null, labels = [];
+    const close = () => { if (cur && cur.rows.length) blocks.push(cur); cur = null; };
+    for (const line of lines.slice(start + 1)) {
+      const cells = line.split(sep).map((c) => c.trim());
+      while (cells.length && cells[cells.length - 1] === "") cells.pop();
+      if (!cells.length) { close(); continue; }
+      const nums = cells.map(parseNum), rest = nums.slice(1);
+      const numeric = rest.length > 0 && rest.some((v) => isFinite(v)) && cells.slice(1).every((c, k) => c === "" || isFinite(rest[k]));
+      if (numeric && (cells[0] === "" || isFinite(nums[0]))) {
+        if (!cur) {   // the text lines just above the numbers name the block: its property and its axes
+          const plain = labels.filter((l) => !l.includes(sep)), prop = plain.pop() || "";
+          const axes = (labels.filter((l) => l.includes(sep)).pop() || plain.pop() || "").split(sep).map((c) => c.trim()).filter(Boolean);
+          cur = { property: prop, rowAxis: axes[0] || "", colAxis: axes[1] || "", cols: null, rows: [] };
+          labels = [];
+        }
+        if (cells[0] === "") cur.cols = rest; else cur.rows.push(nums);
+        continue;
+      }
+      close();
+      if (/^history\s*:/i.test(cells[0])) break;
+      labels.push(line.trim());
+    }
+    close();
+    if (!blocks.length) return null;
+    const t = /-?\d+(?:[.,]\d+)?/.exec(remark("Temperature"));
+    return { blocks, description: remark("Description"), temperature: t ? parseNum(t[0]) : NaN };
+  }
+
+  // a wavelength in a column name: "225", "225 nm", "CD 225nm", "CD225", "A280"
+  function nmIn(name) {
+    const s = String(name).trim();
+    let m = /(\d+(?:[.,]\d+)?)\s*nm(?![a-z])/i.exec(s);
+    if (m) return { w: parseNum(m[1]), explicit: true, at: m.index, len: m[0].length };
+    m = /^(?:CD|θ|theta|ellipticity|abs|absorbance|A|OD)\s*[@_=:-]?\s*(\d{3}(?:[.,]\d+)?)$/i.exec(s);
+    if (m) return { w: parseNum(m[1]), explicit: true, at: s.length - m[1].length, len: m[1].length };
+    const v = parseNum(s);
+    return isFinite(v) ? { w: v, explicit: false, at: 0, len: s.length } : null;
+  }
+  // the name without its wavelength, or "" when only a channel word (CD, A, θ, a unit) is left
+  function groupOf(name, hit) {
+    const s = String(name).trim();
+    const rest = (s.slice(0, hit.at) + s.slice(hit.at + hit.len)).replace(/^[\s_\-–,;:@=]+|[\s_\-–,;:@=]+$/g, "").trim();
+    return /^(?:CD|θ|theta|ellipticity|signal|abs|absorbance|A|OD|mdeg)?\s*(?:\[[^\]]*\]|\([^)]*\))?$/i.test(rest) ? "" : rest;
+  }
+
+  // a wavelength axis: strictly monotonic, in the UV or visible; unlabelled numbers must look like a far-UV spectrum
+  function waveAxis(v, hinted) {
+    if (v.length < 2) return false;
+    const up = v[1] > v[0];
+    let lo = Infinity, hi = -Infinity, step = 0;
+    for (let i = 0; i < v.length; i++) {
+      if (!isFinite(v[i])) return false;
+      if (i && !(up ? v[i] > v[i - 1] : v[i] < v[i - 1])) return false;
+      if (i) step = Math.max(step, Math.abs(v[i] - v[i - 1]));
+      lo = Math.min(lo, v[i]); hi = Math.max(hi, v[i]);
+    }
+    if (lo < 150 || hi > 1100) return false;
+    return hinted || (v.length >= 5 && lo < 250 && step <= 10);
+  }
+
+  // where the wavelength is in a scan: measured, between two wavelengths at most 5 nm apart, or the only one
+  function pickWave(waves, lam, single = true) {
+    const k = waves.findIndex((w) => Math.abs(w - lam) < 1e-6);
+    if (k >= 0) return { k };
+    let lo = -1, hi = -1;
+    waves.forEach((w, i) => {
+      if (w < lam && (lo < 0 || w > waves[lo])) lo = i;
+      if (w > lam && (hi < 0 || w < waves[hi])) hi = i;
+    });
+    if (lo >= 0 && hi >= 0 && waves[hi] - waves[lo] <= 5) return { lo, hi, u: (lam - waves[lo]) / (waves[hi] - waves[lo]) };
+    return single && waves.length === 1 ? { k: 0, only: true } : null;
+  }
+  const valueOf = (row, pk) => (pk.lo === undefined ? row[pk.k] : row[pk.lo] + pk.u * (row[pk.hi] - row[pk.lo]));
+  function waveList(waves) {
+    const w = [...new Set(waves)].sort((a, b) => a - b), steps = w.slice(1).map((x, i) => x - w[i]);
+    if (w.length >= 3 && steps.every((s) => Math.abs(s - steps[0]) < 1e-6))
+      return `${fmtNum(w[0], 4)}–${fmtNum(w[w.length - 1], 4)} nm every ${fmtNum(steps[0], 3)} nm`;
+    return w.map((x) => fmtNum(x, 4)).join(", ") + " nm";
+  }
+
+  /* What a file holds, for one mode. kind "scan": a signal at one or more wavelengths (across) against temperature
+     (down); "spec": spectra, wavelengths down the first column; "melt": a melting curve; "table": anything else,
+     used as it is; "none": nothing for this mode. */
+  function describe(raw, stem, mode) {
+    const c = chirascan(raw);
+    if (c) return fromChirascan(c, stem, mode);
+    const j = jasco(raw), text = j ? j.text : csvToTabs(raw), p = parseData(text);
+    if (!p.rows.length || !p.names.length) return null;
+    const onlyFirst = !!j && !j.matrix;
+    return { file: stem, name: stem, source: j ? "JASCO" : "", p, onlyFirst, raw: text, ...layout(p, onlyFirst) };
+  }
+
+  function layout(p, onlyFirst) {
+    const xs = p.rows.map((r) => r[0]);
+    if (!TEMP_HINT.test(p.xName) && !TIME_HINT.test(p.xName) && waveAxis(xs, WAVE_HINT.test(p.xName))) return { kind: "spec" };
+    if (onlyFirst) return { kind: "table" };
+    const signal = p.names.map((name, j) => ({ name, j })).filter((c) => !HT.test(c.name));
+    const hits = signal.map((c) => ({ ...c, hit: nmIn(c.name) })).filter((c) => c.hit && c.hit.w >= 150 && c.hit.w <= 1100);
+    const tempHint = TEMP_HINT.test(p.xName) || p.xName === "";
+    if (!hits.length || hits.length !== signal.length || !(tempHint || xs.every((x) => x >= -30 && x <= 130))) return { kind: "table" };
+    const explicit = hits.some((c) => c.hit.explicit), groups = new Map();
+    for (const c of hits) {
+      const g = groupOf(c.name, c.hit);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(c);
+    }
+    const list = [...groups].map(([name, cs]) => ({ name, waves: cs.map((c) => c.hit.w), js: cs.map((c) => c.j) }));
+    if (list.some((g) => new Set(g.waves).size !== g.waves.length)) return { kind: "table" };
+    // bare numbers count as wavelengths only under a temperature column and when the wavelength is among them
+    if (!explicit && !(tempHint && list.some((g) => pickWave(g.waves, lambda(), false)))) return { kind: "table" };
+    return { kind: "scan", temps: xs, groups: list.map((g) => ({ name: g.name, waves: g.waves, rows: p.rows.map((r) => g.js.map((j) => r[j + 1])) })) };
+  }
+
+  /* Points measured with the detector at its voltage limit carry no signal (a long cell or a strong absorber in the
+     far UV): the cells of the HV block at 99.5% or more of its highest value, when that is at least 900 V. */
+  function limits(c, b) {
+    const hv = c.blocks.find((x) => /^(HV|HT)$/i.test(x.property) && x.rowAxis === b.rowAxis && x.colAxis === b.colAxis && x.rows.length === b.rows.length);
+    if (!hv) return null;
+    let top = -Infinity;
+    for (const r of hv.rows) for (let k = 1; k < r.length; k++) if (isFinite(r[k])) top = Math.max(top, r[k]);
+    return top >= 900 ? { top, at: (i, k) => hv.rows[i][k + 1] >= 0.995 * top } : null;
+  }
+  const limitNote = (name, n, top, where) =>
+    `${name}: ${n} point${n > 1 ? "s" : ""} ${where} left out, measured with the detector at its limit (HV ${fmtNum(top, 4)} V).`;
+
+  function fromChirascan(c, stem, mode) {
+    const want = mode === "uv" ? /^absorbance$/i : /circular\s*dichroism|^CD$/i;
+    const b = c.blocks.find((x) => want.test(x.property));
+    const name = stem;   // the file's name: the #Description remark is often left from an earlier sample
+    const base = { file: stem, name, source: "Chirascan", unit: b && /circular/i.test(b.property) ? "mdeg" : "", notes: [] };
+    if (!b) return { ...base, kind: "none", why: mode === "uv" ? "no absorbance in the file" : "no CD in the file" };
+    const rowWave = /wave/i.test(b.rowAxis), rowTemp = /temp/i.test(b.rowAxis);
+    const colWave = /wave/i.test(b.colAxis), colTemp = /temp/i.test(b.colAxis);
+    const lim = limits(c, b);
+    if (!b.cols) {
+      const pts = [], gone = [];
+      b.rows.forEach((r, i) => { if (lim && lim.at(i, 0)) gone.push(r[0]); else pts.push([r[0], r[1]]); });
+      if (gone.length) {
+        const lo = Math.min(...gone), hi = Math.max(...gone), unit = rowWave ? " nm" : rowTemp ? " °C" : "";
+        let note = limitNote(name, gone.length, lim.top, lo === hi ? `at ${fmtNum(lo, 4)}${unit}` : `from ${fmtNum(lo, 4)} to ${fmtNum(hi, 4)}${unit}`);
+        if (rowWave && gone.some((w) => w >= 190 && w <= 205)) note = note.slice(0, -1) + ", so the band near 197 nm is lost: λmin and Rpn are not reliable.";
+        base.notes.push(note);
+      }
+      if (rowWave) return { ...base, kind: "spec", spectra: [{ name: isFinite(c.temperature) ? `${name} (${c.temperature} °C)` : name, pts }] };
+      return { ...base, kind: rowTemp ? "melt" : "table", cols: [{ name, pts }] };
+    }
+    const why = b.rows.map((r, i) => r.slice(1).map((_, k) => !!(lim && lim.at(i, k))));
+    const rows = b.rows.map((r, i) => r.slice(1).map((v, k) => (why[i][k] ? NaN : v)));
+    if (rowTemp && colWave) return { ...base, kind: "scan", top: lim ? lim.top : NaN, temps: b.rows.map((r) => r[0]), groups: [{ name: "", waves: b.cols, rows, why }] };
+    const cut = why.flat().filter(Boolean);
+    if (cut.length) base.notes.push(limitNote(name, cut.length, lim.top, "of the table"));
+    const across = (label) => b.cols.map((v, k) => ({ name: label(v), pts: b.rows.map((r, i) => [r[0], rows[i][k]]) }));
+    if (rowWave && colTemp) return { ...base, kind: "spec", spectra: across((t) => `${name} ${t} °C`) };
+    return { ...base, kind: "table", cols: across((v) => `${name} ${v}`) };
+  }
+
+  // a plain or JASCO file's columns, named as they always were: by the file when it gives one column
+  function plainCols(fd, many) {
+    const p = fd.p, ny = fd.onlyFirst ? Math.min(1, p.names.length) : p.names.length, out = [];
+    for (let j = 0; j < ny; j++) {
+      if (fd.kind === "spec" && HT.test(p.names[j]) && !fd.onlyFirst) continue;
+      const name = many || fd.source ? (ny === 1 ? fd.file : `${fd.file}: ${p.names[j]}`) : p.names[j];
+      out.push({ name, pts: p.rows.filter((r) => isFinite(r[j + 1])).map((r) => [r[0], r[j + 1]]) });
+    }
+    return out;
+  }
+  const groupName = (fd, g, many) => (!g.name ? fd.name : many || fd.source ? `${fd.name}: ${g.name}` : g.name);
+
+  function scanMelt(fd, lam, many) {
+    const cols = [], notes = [], misses = [];
+    for (const g of fd.groups) {
+      const pk = pickWave(g.waves, lam), name = groupName(fd, g, many);
+      if (!pk) { misses.push(g); continue; }
+      const pts = fd.temps.map((t, i) => [t, valueOf(g.rows[i], pk)]);
+      cols.push({ name, pts });
+      if (g.why) {   // the temperatures left out at this wavelength
+        const ks = pk.lo === undefined ? [pk.k] : [pk.lo, pk.hi], n = g.why.filter((w) => ks.some((k) => w[k])).length;
+        if (n) notes.push(limitNote(name, n, fd.top, `at ${fmtNum(lam, 4)} nm`));
+      }
+      if (pk.only && Math.abs(g.waves[0] - lam) > 1e-6) notes.push(`${name}: measured at ${fmtNum(g.waves[0], 4)} nm only, so that is used.`);
+    }
+    const why = misses.length ? `no ${fmtNum(lam, 4)} nm: measured at ${waveList(misses[0].waves)}` : "";
+    if (cols.length && misses.length) notes.push(`${fd.file}: ${why}.`);
+    return { cols, notes, why };
+  }
+  function scanSpectra(fd, many) {
+    const out = [];
+    fd.temps.forEach((t, i) => {
+      for (const g of fd.groups) out.push({ name: `${groupName(fd, g, many)} ${t} °C`, pts: g.waves.map((w, k) => [w, g.rows[i][k]]) });
+    });
+    return out;
+  }
+  // spectra from all files together (a peptide's spectra can come from several files): one column per peptide
+  function spectraMelt(spectra, lam) {
+    const groups = new Map();
+    let labelled = 0;
+    for (const s of spectra) {
+      const lab = cdfitSpectra.labelOf(s.name);
+      if (!lab || !isFinite(lab.value)) continue;
+      labelled++;
+      const v = cdfitSpectra.valueAt({ xs: s.pts.map((q) => q[0]), ys: s.pts.map((q) => q[1]) }, lam);
+      if (!groups.has(lab.group)) groups.set(lab.group, new Map());
+      const g = groups.get(lab.group);
+      if (!g.has(lab.value)) g.set(lab.value, v);   // the first spectrum at a temperature counts
+    }
+    if (!(labelled >= 3 && [...groups.values()].some((g) => g.size >= 2)))
+      return { cols: [], why: "spectra with no temperature series in their names" };
+    const cols = [...groups].map(([name, g]) => ({ name, pts: [...g].sort((a, b) => a[0] - b[0]) })).filter((c) => c.pts.some((q) => isFinite(q[1])));
+    return cols.length ? { cols, why: "" } : { cols, why: `${fmtNum(lam, 4)} nm is outside the spectra` };
+  }
+
+  // everything the files give in one mode
+  function build(texts, mode, lam) {
+    const out = { mode, cols: [], notes: [], skipped: [], used: [], picked: false, asIs: true, single: null, scans: [] };
+    const fds = [];
+    for (const t of texts) {
+      const fd = describe(t.raw, t.stem, mode);
+      if (fd) fds.push(fd); else out.skipped.push(`${t.stem} (no numbers)`);
+    }
+    const many = fds.length > 1, spectra = [];
+    const use = (fd, cols) => { out.cols.push(...cols); out.used.push(fd); out.notes.push(...(fd.notes || [])); };
+    for (const fd of fds) {
+      if (fd.kind === "none") { out.skipped.push(`${fd.file} (${fd.why})`); continue; }
+      if (fd.kind === "table") { use(fd, fd.cols || plainCols(fd, many)); if (fd.source) out.asIs = false; continue; }
+      if (fd.kind === "melt") {
+        if (mode === "spec") { out.skipped.push(`${fd.file} (a melting curve: open it in CD melting)`); continue; }
+        use(fd, fd.cols); out.asIs = false; continue;
+      }
+      if (fd.kind === "scan") {
+        out.asIs = false;
+        if (mode === "spec") {
+          if (fd.groups.some((g) => g.waves.length >= 10)) use(fd, scanSpectra(fd, many));
+          else out.skipped.push(`${fd.file} (a melting scan at ${waveList(fd.groups[0].waves)}: open it in CD melting)`);
+          continue;
+        }
+        const r = scanMelt(fd, lam, many);
+        out.notes.push(...r.notes);
+        if (!r.cols.length) { out.skipped.push(`${fd.file} (${r.why})`); continue; }
+        use(fd, r.cols); out.picked = true; out.scans.push(fd);
+        continue;
+      }
+      const named = fd.spectra || plainCols(fd, many);   // spectra
+      if (fd.source) out.asIs = false;
+      if (mode === "spec") use(fd, named);
+      else spectra.push(...named.map((s) => ({ ...s, fd })));
+    }
+    if (spectra.length) {
+      const r = spectraMelt(spectra, lam), from = [...new Set(spectra.map((s) => s.fd))];
+      if (r.cols.length) {
+        out.cols.push(...r.cols); out.used.push(...from); out.asIs = false; out.picked = true;
+        for (const fd of from) out.notes.push(...(fd.notes || []));
+      }
+      else for (const fd of from) out.skipped.push(`${fd.file} (${r.why}: open ${from.length > 1 ? "them" : "it"} in CD spectrum)`);
+    }
+    if (fds.length === 1 && out.used.length === 1 && out.asIs && !fds[0].source) out.single = fds[0].raw;
+    out.unit = out.used.length && out.used.every((fd) => fd.unit === "mdeg") ? "mdeg" : "";
+    return out;
+  }
+
+  // one table from columns, matched by X
+  function table(xName, cols) {
+    const xs = new Map(), key = (x) => Math.round(x * 1e6) / 1e6, seen = new Map();
+    const maps = cols.map((c) => {
+      const m = new Map();
+      for (const [x, y] of c.pts) if (isFinite(x) && isFinite(y)) { const k = key(x); m.set(k, y); xs.set(k, x); }
+      return m;
+    });
+    const names = cols.map((c) => {   // the same name twice gets a number
+      const n = c.name.replace(/[\t\r\n]+/g, " "), k = (seen.get(n) || 0) + 1;
+      seen.set(n, k);
+      return k > 1 ? `${n} (${k})` : n;
+    });
+    const keys = [...xs.keys()].sort((a, b) => a - b);
+    const out = [[xName, ...names].join("\t")];
+    for (const k of keys) out.push([String(xs.get(k)), ...maps.map((m) => (m.has(k) ? String(m.get(k)) : ""))].join("\t"));
+    return out.join("\n");
+  }
+
+  const xNameFor = (name, mode) => {
+    if (/nanomet|^\s*λ|wavelength/i.test(name || "")) return "λ (nm)";
+    if (/temp|°c/i.test(name || "")) return "T (°C)";
+    return name && name !== "X" ? name : { spec: "λ (nm)", melt: "T (°C)", uv: "T (°C)" }[mode] || "X";
+  };
+
+  // the y-axis title follows the wavelength and the unit, unless it was changed by hand
+  function retitle(plan, lam) {
+    const cur = S.fmt.yTitle || "";
+    const auto = cur === modeFmt(S.mode).yTitle || /^\*(?:θ|A)\*(?:_\{[\d.]+\})?(?: \((?:mdeg|10\^\{3\} deg cm\^\{2\} dmol\^\{-1\})\))?$/.test(cur);
+    if (!auto) return;
+    const sub = `_{${fmtNum(lam, 4)}}`;
+    let t = cur;
+    if (S.mode === "uv") { if (plan.picked) t = `*A*${sub}`; }
+    else if (S.mode === "spec") { if (plan.unit === "mdeg") t = "*θ* (mdeg)"; }
+    else if (plan.unit === "mdeg") t = `*θ*${plan.picked ? sub : ""} (mdeg)`;
+    else if (plan.picked) t = cur.replace(/^\*θ\*(?:_\{[\d.]+\})?/, `*θ*${sub}`);
+    S.fmt.yTitle = t;
+    $("yTitle").value = t;
+  }
+
+  // file names in natural order (CMP1_4C before CMP1_20C), the same order as the skill's
+  const natural = (name) => name.replace(/\.[^.]+$/, "").toLowerCase().split(/(\d+)/).map((t, i) => (i % 2 ? Number(t) : t));
+  function byName(a, b) {
+    const x = natural(a.name), y = natural(b.name);
+    for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+    return x.length - y.length;
+  }
+
+  let last = null;   // the last files read, to read them again at another wavelength
+  async function load(files) {
+    files = [...files].filter((f) => f && f.size > 0).sort(byName);
+    if (!files.length) return;
+    setStatus(`Reading ${files.length} file${files.length > 1 ? "s" : ""}…`);
+    const texts = [], unread = [];
+    for (const f of files) {
+      try { texts.push({ stem: f.name.replace(/\.[^.]+$/, ""), raw: isExcel(f.name) ? await readXlsx(f) : await readText(f) }); }
+      catch (e) { unread.push(`${f.name} (${(e && e.message) || "could not be read"})`); }
+    }
+    const lam = lambda(), from = S.mode;
+    // the current mode if any file suits it, otherwise the mode the files are for
+    let plan = null;
+    for (const mode of [from, ...(from === "spec" ? ["melt"] : ["spec", "melt"])].filter((m, i, a) => a.indexOf(m) === i)) {
+      const p = build(texts, mode, lam);
+      if (p.cols.length) { plan = p; break; }
+      plan = plan || p;
+    }
+    const skipped = [...unread, ...plan.skipped];
+    if (!plan.cols.length) { setStatus(`Nothing to load: ${skipped.join("; ") || "no numbers found"}.`, "err"); return; }
+    if (plan.mode !== from) switchMode(plan.mode);
+    const xName = plan.asIs ? xNameFor(plan.used[0].p ? plan.used[0].p.xName : "", plan.mode) : plan.mode === "spec" ? "λ (nm)" : "T (°C)";
+    const text = plan.single != null ? plan.single : table(xName, plan.cols);
+    S.dataText = text; S.series = []; $("data").value = text;
+    retitle(plan, lam);
+    refresh(true);
+    last = { files, text, mode: plan.mode, picked: plan.picked };
+
+    const parts = [], n = plan.used.length, sig = plan.mode === "uv" ? "absorbance" : "CD";
+    if (plan.mode !== from) {
+      const they = n > 1 ? "they" : "it";
+      parts.push(plan.mode === "spec" ? `${n > 1 ? "These files hold" : "This file holds"} spectra, so ${they} opened in CD spectrum.`
+        : from === "uv" ? `No absorbance in ${n > 1 ? "these files" : "this file"}, so ${they} opened in CD melting.`
+        : `${n > 1 ? "These files are melting scans" : "This file is a melting scan"}, so ${they} opened in CD melting.`);
+    }
+    if (plan.picked) {
+      const one = plan.scans.length === 1 && n === 1 ? plan.scans[0] : null;
+      const detail = one ? ` (${one.source ? one.source + " " : ""}scan at ${waveList(one.groups[0].waves)}, ${one.temps.length} temperatures)` : "";
+      parts.push(`${n === 1 ? plan.used[0].name : n + " files"}: ${sig} at ${fmtNum(lam, 4)} nm against temperature${detail}.`);
+    } else {
+      const k = plan.cols.length;
+      parts.push(`Loaded ${n} file${n > 1 ? "s" : ""} as ${k} data set${k > 1 ? "s" : ""}.`);
+    }
+    parts.push(...plan.notes);
+    if (skipped.length) parts.push(`Skipped: ${skipped.join("; ")}.`);
+    const tm = $("status").textContent;
+    if (/^Tm = /.test(tm)) parts.push(tm + ".");
+    setStatus(parts.join(" "), skipped.length || plan.notes.length ? "err" : "ok");
+  }
+
+  // the Data tab's file button takes several files
+  const input = $("file");
+  input.multiple = true;
+  input.accept = ".csv,.txt,.tsv,.dat,.asc,.prn,.xlsx,.xlsm,.xls,text/plain";
+  input.onchange = async () => { const fs = [...input.files]; input.value = ""; await load(fs); };
+  $("btnFile").textContent = "Open files…";
+  const tip = document.createElement("div");
+  tip.className = "hint";
+  tip.textContent = "Open or drop several files at once: each becomes a column, matched by X. Chirascan, JASCO and Excel files work. "
+    + "From a scan at several wavelengths, or spectra named with their temperatures, CD and UV melting take the value at this wavelength:";
+  const lamRow = document.createElement("div");
+  lamRow.className = "row imp-lambda";
+  lamRow.innerHTML = '<label for="impLambda">Wavelength</label><input type="number" id="impLambda" step="any" min="150" max="1100" value="225"><span>nm</span>';
+  $("btnFile").closest(".row").after(tip);
+  tip.after(lamRow);
+  const lamInput = $("impLambda"), specLambda = $("specLambda");
+  function lambda() { const v = parseNum(lamInput.value); return isFinite(v) && v > 0 ? v : 225; }
+  try { const v = localStorage.getItem(LAMBDA_KEY); if (v && isFinite(parseNum(v))) { lamInput.value = v; if (specLambda) specLambda.value = v; } } catch (e) {}
+  let timer = null;
+  lamInput.addEventListener("input", () => {
+    try { localStorage.setItem(LAMBDA_KEY, lamInput.value); } catch (e) {}
+    if (specLambda && specLambda.value !== lamInput.value) { specLambda.value = lamInput.value; specLambda.dispatchEvent(new Event("input")); }
+    clearTimeout(timer);
+    timer = setTimeout(() => { if (last && last.picked && S.mode === last.mode && S.dataText === last.text) load(last.files); }, 400);
+  });
+  if (specLambda) specLambda.addEventListener("input", () => {
+    if (lamInput.value === specLambda.value) return;
+    lamInput.value = specLambda.value;
+    try { localStorage.setItem(LAMBDA_KEY, lamInput.value); } catch (e) {}
+  });
+
+  // files dropped anywhere on the page
+  const hasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+  let depth = 0;
+  document.addEventListener("dragenter", (e) => { if (hasFiles(e)) { depth++; document.body.classList.add("dropping"); } });
+  document.addEventListener("dragleave", () => { if (--depth <= 0) { depth = 0; document.body.classList.remove("dropping"); } });
+  document.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  document.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    document.body.classList.remove("dropping");
+    load(e.dataTransfer.files);
+  });
+
+  return { load, jasco, chirascan, describe, build, table, lambda };
+})();
+</script>
+<script>
+"use strict";
+/* 1st and 2nd derivatives of the CD and UV melting fits in one figure, in its own section below the app.
+   Each fit is expressed as the fraction unfolded, alpha = (Y - native baseline) / (unfolded - native baseline),
+   so CD (falls on unfolding) and UV (rises) share the axes. The fits come from the add-in's own functions. */
+const cdfitDerivatives = (function () {
+  const MELT_MODES = ["melt", "uv"];
+  const TAG = { melt: "CD", uv: "UV" };
+  const TITLES = ["*α* (fraction unfolded)", "d*α*/d*T* (°C^{−1})", "d^{2}*α*/d*T*^{2} (°C^{−2})"];
+  const box = $("derivSvgBox"), tableBox = $("derivTable"), note = $("derivNote");
+  const examples = {};
+  const isExample = (st) => {
+    if (!(st.mode in examples)) examples[st.mode] = exampleData(st.mode).trim();
+    return (st.dataText || "").trim() === examples[st.mode];
+  };
+
+  // The melting mode that is not on screen keeps its state in MODE_STORE (fitted by cdfitFitState, page.js)
+  function sources() {
+    const out = [], freshPage = isExample(S);
+    for (const mode of MELT_MODES) {
+      let src = null;
+      if (S.mode === mode) {
+        if (S.fit && MODEL) src = { st: S, data: DATA, model: MODEL, fits: FITS, example: freshPage };
+      } else {
+        // a page still on its example data shows both examples; otherwise only data the viewer gave
+        const st = MODE_STORE[mode] || (freshPage ? modeDefaults(mode) : null);
+        const r = st && st.fit ? cdfitFitState(st) : null;
+        if (r && r.model) src = { ...r, example: isExample(r.st) };
+      }
+      if (src) out.push({ mode, ...src });
+    }
+    return out;
+  }
+
+  const argmax = (a) => a.reduce((best, v, i) => (v > a[best] ? i : best), 0);
+  function vertex(xs, ys, i) {            // the top of a parabola through the grid points around i
+    if (i <= 0 || i >= ys.length - 1) return { x: xs[i], edge: true };
+    const y0 = ys[i - 1], y1 = ys[i], y2 = ys[i + 1], den = y0 - 2 * y1 + y2;
+    const off = den ? Math.max(-1, Math.min(1, (0.5 * (y0 - y2)) / den)) : 0;
+    return { x: xs[i] + off * (xs[1] - xs[0]), edge: false };
+  }
+
+  function analyse(src) {
+    const { mode, st, data, model, fits } = src;
+    const baselines = stepSupported(model), iTm = model.keys.indexOf("tm"), out = [];
+    data.series.forEach((ser, j) => {
+      const fit = fits[j], cfg = st.series[j];
+      if (!fit || fit.error || !cfg || !cfg.visible || ser.xs.length < 3) return;
+      const p = fit.p, x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs);
+      const Y = (x) => model.fn(x, p);
+      let alpha;
+      if (baselines) alpha = (x) => { const v = model.vars(x, p); return (v.y - v.cdn) / (v.cdu - v.cdn); };
+      else { const ya = Y(x0), yb = Y(x1); alpha = (x) => (Y(x) - ya) / (yb - ya); }
+      const N = 600, h = 0.01, h2 = 0.03, xs = [], a = [], d1 = [], d2 = [], r1 = [];
+      for (let i = 0; i <= N; i++) {
+        const x = x0 + ((x1 - x0) * i) / N, a0 = alpha(x);
+        xs.push(x);
+        a.push(a0);
+        d1.push((alpha(x + h) - alpha(x - h)) / (2 * h));
+        d2.push((alpha(x + h2) - 2 * a0 + alpha(x - h2)) / (h2 * h2));
+        r1.push((Y(x + h) - Y(x - h)) / (2 * h));
+      }
+      if (![a, d1, d2, r1].every((arr) => arr.every(isFinite))) return;
+      const ip = argmax(d1), sign = Math.sign(r1[ip]) || 1, rs = r1.map((v) => sign * v), neg = d2.map((v) => -v);
+      const pts = ser.xs.map((x, i) => {
+        if (!baselines) { const ya = Y(x0), yb = Y(x1); return [x, (ser.ys[i] - ya) / (yb - ya)]; }
+        const v = model.vars(x, p);
+        return [x, (ser.ys[i] - v.cdn) / (v.cdu - v.cdn)];
+      });
+      out.push({
+        name: ser.name, mode, tag: TAG[mode], color: cfg.color || COLORS[j % COLORS.length], example: src.example,
+        xs, a, d1, d2, pts, tm: iTm >= 0 ? p[iTm] : NaN, tmSe: iTm >= 0 ? fit.se[iTm] : NaN,
+        peak: vertex(xs, d1, ip), raw: vertex(xs, rs, argmax(rs)), onset: vertex(xs, d2, argmax(d2)), end: vertex(xs, neg, argmax(neg)),
+      });
+    });
+    return out;
+  }
+
+  // α always on one scale; a data point beyond it (where the fitted baselines nearly meet) is left out of the figure
+  const A_LO = -0.25, A_HI = 1.25, LEGEND_MAX = 8;
+  const outside = (c) => c.pts.filter((q) => !(q[1] >= A_LO && q[1] <= A_HI)).length;
+
+  // Three panels on one temperature axis (panels.js draws them in the add-in's graph style)
+  function draw(curves) {
+    const d1v = curves.flatMap((c) => c.d1);
+    const dash = (c) => (c.mode === "uv" ? "7,4" : "");
+    const line = (c, ys) => ({ xs: c.xs, ys, color: c.color, dash: dash(c) });
+    const peaks = curves.filter((c) => !c.peak.edge).map((c) => ({ x: c.peak.x, color: c.color }));
+    return cdfitPanels({
+      xVals: curves.flatMap((c) => [c.xs[0], c.xs[c.xs.length - 1]]), xTitle: "*T* (°C)", legendAt: "tl",
+      // more than 8 curves would bury the panels under the legend: the table beside the figure has their colours
+      legend: curves.length > LEGEND_MAX ? [] : curves.map((c) => ({ label: cdfitMarkupEscape(c.name) + " · " + c.tag, color: c.color, dash: dash(c), hollow: c.mode === "uv" })),
+      panels: [
+        { title: TITLES[0], height: 0.72, axis: { min: A_LO, max: A_HI, step: 0.25 },
+          lines: curves.map((c) => line(c, c.a)),
+          points: curves.flatMap((c) => c.pts.map(([x, y]) => ({ x, y, color: c.color, hollow: c.mode === "uv", opacity: 0.75 }))) },
+        // dα/dT from 0: rounding gives it tiny negatives
+        { title: TITLES[1], height: 0.6, axis: Math.min(...d1v) > -1e-6 * Math.max(...d1v) ? { min: 0 } : null,
+          zero: true, vlines: peaks, lines: curves.map((c) => line(c, c.d1)), points: [] },
+        { title: TITLES[2], height: 0.6, zero: true, vlines: peaks, lines: curves.map((c) => line(c, c.d2)), points: [] },
+      ],
+    });
+  }
+
+  const t2 = (v) => (isFinite(v) ? v.toFixed(2) : "—");
+  const t1 = (v) => (isFinite(v) ? v.toFixed(1) : "—");
+  const at = (pt, fmt) => (pt.edge ? "at the edge" : fmt(pt.x));
+  function table(curves) {
+    let h = `<table class="t"><thead><tr><th>Data set</th><th class="num">T<sub>m</sub>, fit (°C)</th>` +
+      `<th class="num">dα/dT peak (°C)</th><th class="num">dY/dT peak (°C)</th><th class="num">d²α/dT² max to min (°C)</th></tr></thead><tbody>`;
+    for (const c of curves) {
+      const tm = isFinite(c.tmSe) && c.tmSe > 0 ? fmtPM(c.tm, c.tmSe) : t2(c.tm);
+      h += `<tr><td><span class="swatch" style="background:${c.color}"></span> ${esc(c.name)} · ${c.tag}</td>` +
+        `<td class="num">${tm}</td><td class="num">${at(c.peak, t2)}</td><td class="num">${at(c.raw, t2)}</td>` +
+        `<td class="num">${c.onset.edge || c.end.edge ? "—" : t1(c.onset.x) + " to " + t1(c.end.x)}</td></tr>`;
+    }
+    return h + "</tbody></table>";
+  }
+
+  let curves = [], figure = null;
+  function update() {
+    curves = sources().flatMap(analyse);
+    if (!curves.length) {
+      figure = null;
+      box.innerHTML = "";
+      tableBox.innerHTML = "";
+      note.textContent = "Fit a CD or a UV melting curve to see its derivatives here.";
+      return;
+    }
+    figure = draw(curves);
+    box.innerHTML = figure.svg;
+    tableBox.innerHTML = table(curves);
+    const has = new Set(curves.map((c) => c.mode));
+    const parts = [];
+    if (!has.has("uv")) parts.push("Only CD curves so far: fit data under UV melting to compare both here.");
+    if (!has.has("melt")) parts.push("Only UV curves so far: fit data under CD melting to compare both here.");
+    if (curves.some((c) => c.example)) parts.push("These curves come from the example data.");
+    if (curves.length > LEGEND_MAX) parts.push(`With ${curves.length} curves the figure has no legend: the table gives each one's colour.`);
+    const off = curves.filter(outside).map((c) => `${c.name} · ${c.tag} (${outside(c)})`);
+    if (off.length) parts.push(`Points with α outside −0.25 to 1.25 are not drawn: ${off.join(", ")}. ` +
+      "Where the fitted baselines nearly meet, α is not well defined, so check those baselines.");
+    note.textContent = parts.join(" ");
+  }
+
+  const stem = () => "Derivatives - " + [...new Set(curves.map((c) => c.name))].slice(0, 3).join(", ").replace(/[\\/:*?"<>|]+/g, "");
+  $("derivPng").onclick = async () => {
+    if (!figure || !cdfitFiles.save) return;
+    try { await cdfitFiles.save(stem() + ".png", await cdfitFiles.pngBlob(figure.svg, figure.width, figure.height)); }
+    catch (e) { setStatus(e.message, "err"); }
+  };
+  $("derivSvg").onclick = () => { if (figure && cdfitFiles.save) cdfitFiles.save(stem() + ".svg", figure.svg); };
+
+  CDFIT_AFTER_REFRESH.push(update);
+  update();
+
+  return {
+    summary() {
+      return curves.map((c) => `${c.name} ${c.tag}: Tm (fit) ${t2(c.tm)}, peak of d(alpha)/dT ${at(c.peak, t2)}, ` +
+        `peak of dY/dT ${at(c.raw, t2)}, d2(alpha)/dT2 max ${at(c.onset, t1)} and min ${at(c.end, t1)}`).join("\n");
+    },
+  };
+})();
+</script>
+<script>
+"use strict";
+/* All spectra at once (CD spectrum mode): one table row per spectrum, θ at a chosen wavelength and Rpn against
+   the temperature read from each spectrum's name, colours by temperature, and θ(λ) against T sent to CD melting. */
+const cdfitSpectra = (function () {
+  const sec = $("spectra"), box = $("specSvgBox"), fig = $("specFigure"), tableBox = $("specTable"), note = $("specNote");
+  const lamInput = $("specLambda"), meltRow = $("specMeltRow"), confirmRow = $("specConfirm");
+  const RAMP = ["#1d4e89", "#2a8c8c", "#7fae4a", "#d39b22", "#d0612f", "#9b2226"];
+  let view = null;   // the last analysis: rows, groups, lambda, figure
+
+  // a temperature (or another number) in a spectrum's name, and the name without it
+  function labelOf(name) {
+    let m = /(-?\d+(?:[.,]\d+)?)\s*(?:°\s*C|℃|deg\s*C|C)(?![A-Za-z])/i.exec(name), celsius = !!m;
+    if (!m) {
+      const all = [...name.matchAll(/-?\d+(?:[.,]\d+)?/g)];
+      m = all.length ? all[all.length - 1] : null;
+    }
+    if (!m) return null;
+    const number = m[1] !== undefined ? m[1] : m[0];   // the °C match captures the number; the fallback is the number
+    const rest = (name.slice(0, m.index) + name.slice(m.index + m[0].length)).replace(/\(\s*\)|\[\s*\]/g, " ");
+    const group = rest.replace(/^[\s_\-–,;:()[\]]+|[\s_\-–,;:()[\]]+$/g, "").trim();
+    const value = parseFloat(number.replace(",", "."));
+    // a bare number heading a spectrum, as in a table of spectra, is its temperature
+    if (!celsius && /^\s*-?\d+(?:[.,]\d+)?\s*$/.test(name) && value >= -30 && value <= 130) celsius = true;
+    return { value, celsius, group: group || "Spectra" };
+  }
+
+  function valueAt(ser, lam) {
+    const idx = ser.xs.map((_, i) => i).sort((a, b) => ser.xs[a] - ser.xs[b]);
+    for (let k = 0; k < idx.length - 1; k++) {
+      const i = idx[k], j = idx[k + 1];
+      if (ser.xs[i] <= lam && lam <= ser.xs[j]) {
+        const span = ser.xs[j] - ser.xs[i];
+        return span ? ser.ys[i] + ((lam - ser.xs[i]) / span) * (ser.ys[j] - ser.ys[i]) : ser.ys[i];
+      }
+    }
+    return NaN;
+  }
+
+  const units = () => { const m = /\(([^()]*)\)\s*$/.exec(S.fmt.yTitle || ""); return m ? " (" + m[1] + ")" : ""; };
+  const lambda = () => { const v = parseFloat(String(lamInput.value).replace(",", ".")); return isFinite(v) ? v : 225; };
+
+  function analyse() {
+    const lam = lambda(), rows = [];
+    DATA.series.forEach((ser, j) => {
+      if (!S.series[j] || !S.series[j].visible || !ser.xs.length) return;
+      rows.push({ j, name: ser.name, label: labelOf(ser.name), b: bands(ser), at: valueAt(ser, lam), lo: Math.min(...ser.xs) });
+    });
+    const labelled = rows.filter((r) => r.label && isFinite(r.label.value));
+    const celsius = labelled.length && labelled.every((r) => r.label.celsius);
+    const groups = new Map();
+    for (const r of labelled) {
+      if (!groups.has(r.label.group)) groups.set(r.label.group, []);
+      groups.get(r.label.group).push(r);
+    }
+    for (const g of groups.values()) g.sort((a, b) => a.label.value - b.label.value);
+    const trend = labelled.length >= 3 && [...groups.values()].some((g) => new Set(g.map((r) => r.label.value)).size >= 2);
+    return { lam, rows, groups, celsius, trend, labelled: labelled.length === rows.length };
+  }
+
+  function drawTrend(v) {
+    const names = [...v.groups.keys()], colorOf = (k) => COLORS[k % COLORS.length];
+    const xs = v.rows.filter((r) => r.label).map((r) => r.label.value);
+    const series = (key) => names.map((n, k) => {
+      const g = v.groups.get(n).filter((r) => isFinite(key(r)));
+      return { xs: g.map((r) => r.label.value), ys: g.map(key), color: colorOf(k) };
+    });
+    const pts = (key) => names.flatMap((n, k) => v.groups.get(n).filter((r) => isFinite(key(r)))
+      .map((r) => ({ x: r.label.value, y: key(r), color: colorOf(k), r: 3.4, opacity: 0.95 })));
+    // θ panel: the melting fit where it worked, otherwise straight lines between the points
+    const fits = v.fitted || [], joined = series((r) => r.at);
+    const thetaLines = names.map((n, k) => (fits[k] && fits[k].xs ? { xs: fits[k].xs, ys: fits[k].ys, color: colorOf(k) } : joined[k]));
+    const tmLines = fits.map((f, k) => (f && isFinite(f.tm) ? { x: f.tm, color: colorOf(k) } : null)).filter(Boolean);
+    const label = (n, k) => cdfitMarkupEscape(n) + (fits[k] && isFinite(fits[k].tm) ? ` (*T*_{m} = ${fits[k].tm.toFixed(1)} °C)` : "");
+    return cdfitPanels({
+      xVals: xs, xPad: true, xTitle: v.celsius ? "*T* (°C)" : "Number in the spectrum name", legendAt: "tr",
+      legend: names.length > 1 || tmLines.length ? names.map((n, k) => ({ label: label(n, k), color: colorOf(k) })) : [],
+      panels: [
+        { title: `*θ* at ${fmtNum(v.lam, 4)} nm`, height: 0.7, zero: true, lines: thetaLines, points: pts((r) => r.at), vlines: tmLines },
+        { title: "R_{pn}", height: 0.55, lines: series((r) => r.b.rpn), points: pts((r) => r.b.rpn) },
+      ],
+    });
+  }
+
+  // θ at the wavelength against temperature, fitted with CD melting's model (the CMP model unless changed there)
+  function meltState(v) {
+    const st = MODE_STORE.melt ? JSON.parse(JSON.stringify(MODE_STORE.melt)) : modeDefaults("melt");
+    st.dataText = meltTable(v);
+    st.series = []; st.xFrom = ""; st.xTo = ""; st.fit = true;
+    st.fmt = { ...(st.fmt || {}), yTitle: `*θ*_{${fmtNum(v.lam, 4)}}${units()}` };
+    return st;
+  }
+  function fitTrend(v) {
+    const st = meltState(v), r = cdfitFitState(st);
+    if (!r || !r.model) return null;
+    const iTm = r.model.keys.indexOf("tm");
+    const fits = [...v.groups.keys()].map((n, k) => {
+      const ser = r.data.series[k], fit = r.fits[k];
+      if (!ser || !fit) return { name: n, error: "no points to fit" };
+      if (fit.error) return { name: n, error: fit.error };
+      const x0 = Math.min(...ser.xs), x1 = Math.max(...ser.xs), xs = [], ys = [];
+      for (let i = 0; i <= 200; i++) { const x = x0 + ((x1 - x0) * i) / 200; xs.push(x); ys.push(r.model.fn(x, fit.p)); }
+      return { name: n, xs, ys, tm: iTm >= 0 ? fit.p[iTm] : NaN, se: iTm >= 0 ? fit.se[iTm] : NaN };
+    });
+    const preset = Object.keys(PRESETS).find((k) => PRESETS[k].text.trim() === st.eqText.trim());
+    fits.model = preset === "cmp" ? "the CMP model (ΔH −500 kJ/mol)" : preset ? PRESETS[preset].label : "the equation set under CD melting";
+    return fits;
+  }
+  function fitText(v) {
+    if (!v.fitted) return "";
+    const parts = v.fitted.map((f) => (f.error ? `${f.name}: ${f.error}` : isFinite(f.tm) ? `${f.name} Tm = ${isFinite(f.se) && f.se > 0 ? fmtPM(f.tm, f.se) : fmtNum(f.tm, 4)} °C` : f.name + " fitted"));
+    return `θ at ${fmtNum(v.lam, 4)} nm against temperature, fitted with ${v.fitted.model}: ${parts.join("; ")}.`;
+  }
+
+  const edgeMin = (r) => r.b.xMin <= r.lo + 1e-9;
+  function tableRows(v) {
+    const head = ["Spectrum", v.celsius ? "T (°C)" : "Number in name", "λ max (nm)", "Value at max", "λ min (nm)",
+      "Value at min", "Crossover (nm)", "Rpn", `Value at ${fmtNum(v.lam, 4)} nm`];
+    // a minimum at a spectrum's lowest wavelength is not the band near 197 nm, so λmin and Rpn stay blank
+    const body = v.rows.map((r) => {
+      const edge = edgeMin(r);
+      return [r.name, r.label ? fmtNum(r.label.value, 4) : "—", r.b.hasPos ? fmtNum(r.b.xMax, 5) : "—",
+        fmtNum(r.b.yMax, 4), edge ? "—" : fmtNum(r.b.xMin, 5), edge ? "—" : fmtNum(r.b.yMin, 4), isFinite(r.b.cross) ? r.b.cross.toFixed(1) : "—",
+        !edge && isFinite(r.b.rpn) ? r.b.rpn.toFixed(3) : "—", fmtNum(r.at, 4)];
+    });
+    return [head, ...body];
+  }
+
+  function update() {
+    if (S.mode !== "spec" || !DATA || !DATA.series.length) { sec.hidden = true; return; }
+    sec.hidden = false;
+    const der = $("derivatives");
+    if (sec.nextElementSibling !== der) der.parentNode.insertBefore(sec, der);   // in spectrum mode this section comes first
+    view = analyse();
+    view.fitted = view.trend ? fitTrend(view) : null;
+    view.figure = view.trend ? drawTrend(view) : null;
+    $("specFit").textContent = fitText(view);
+    fig.hidden = !view.figure;
+    box.innerHTML = view.figure ? view.figure.svg : "";
+    sec.classList.toggle("no-figure", !view.figure);
+    const rows = tableRows(view);
+    tableBox.innerHTML = `<table class="t"><thead><tr>${rows[0].map((h, i) => `<th${i ? ' class="num"' : ""}>${esc(h)}</th>`).join("")}</tr></thead><tbody>` +
+      rows.slice(1).map((r, k) => `<tr><td><span class="swatch" style="background:${styleOf(view.rows[k].j).color}"></span> ${esc(r[0])}</td>` +
+        r.slice(1).map((c) => `<td class="num">${esc(c)}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
+    const parts = [`${view.rows.length} spectr${view.rows.length === 1 ? "um" : "a"}.`];
+    if (!view.trend) parts.push("Name the spectra with their temperature (for example “CMP-1 20 °C”, or files named that way) to see θ and Rpn against temperature.");
+    else if (!view.labelled) parts.push("Spectra without a number in their name are left out of the figure.");
+    if (view.rows.some(edgeMin)) parts.push("λmin and Rpn are blank where a spectrum's lowest point is its minimum: the band near 197 nm is not in those data.");
+    if (view.rows.length > 10) parts.push("With this many spectra, Colour by temperature helps, and the legend can be hidden in the Graph tab.");
+    note.textContent = parts.join(" ");
+    meltRow.hidden = !view.trend;
+    $("specToMelt").innerHTML = `Fit θ<sub>${esc(fmtNum(view.lam, 4))}</sub> against ${view.celsius ? "temperature" : "the name's number"} in CD melting`;
+    confirmRow.hidden = true;
+  }
+
+  function ramp(t) {
+    const n = RAMP.length - 1, i = Math.min(n - 1, Math.floor(t * n)), u = t * n - i;
+    const hex = (c) => [1, 3, 5].map((k) => parseInt(c.slice(k, k + 2), 16));
+    const a = hex(RAMP[i]), b = hex(RAMP[i + 1]);
+    return "#" + a.map((v, k) => Math.round(v + (b[k] - v) * u).toString(16).padStart(2, "0")).join("");
+  }
+  $("specGradient").onclick = () => {
+    if (!view || !view.rows.length) return;
+    const order = view.rows.slice().sort((a, b) => (a.label && b.label ? a.label.value - b.label.value : 0) || a.j - b.j);
+    order.forEach((r, k) => { S.series[r.j].color = ramp(order.length > 1 ? k / (order.length - 1) : 0); });
+    refresh(true);
+    setStatus(view.rows.some((r) => r.label) ? "Coloured from blue (lowest temperature) to red (highest)." : "Coloured in column order, blue to red.", "ok");
+  };
+
+  $("specCopy").onclick = async () => {
+    if (!view) return;
+    const text = tableRows(view).map((r) => r.join("\t")).join("\n");
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+    setStatus("Spectra table copied: paste it into Excel or Word.", "ok");
+  };
+
+  const stem = () => "Spectra - " + [...(view ? view.groups.keys() : [])].slice(0, 3).join(", ").replace(/[\\/:*?"<>|]+/g, "");
+  $("specPng").onclick = async () => {
+    if (!view || !view.figure || !cdfitFiles.save) return;
+    try { await cdfitFiles.save(stem() + ".png", await cdfitFiles.pngBlob(view.figure.svg, view.figure.width, view.figure.height)); }
+    catch (e) { setStatus(e.message, "err"); }
+  };
+  $("specSvg").onclick = () => { if (view && view.figure && cdfitFiles.save) cdfitFiles.save(stem() + ".svg", view.figure.svg); };
+
+  // θ at the wavelength against temperature, one column per peptide, into CD melting (which then fits Tm)
+  function meltTable(v) {
+    const names = [...v.groups.keys()];
+    const temps = [...new Set(names.flatMap((n) => v.groups.get(n).map((r) => r.label.value)))].sort((a, b) => a - b);
+    const lines = [[v.celsius ? "T (°C)" : "X", ...names].join("\t")];
+    for (const t of temps)
+      lines.push([String(t), ...names.map((n) => { const r = v.groups.get(n).find((q) => q.label.value === t); return r && isFinite(r.at) ? String(+r.at.toPrecision(8)) : ""; })].join("\t"));
+    return lines.join("\n");
+  }
+  function sendToMelt() {
+    if (!view || !view.trend) return;
+    MODE_STORE.melt = meltState(view);   // the same state the section's fit used
+    switchMode("melt");
+    window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+  $("specToMelt").onclick = () => {
+    const st = MODE_STORE.melt;
+    const own = st && (st.dataText || "").trim() && st.dataText.trim() !== exampleData("melt").trim();
+    if (own) { confirmRow.hidden = false; meltRow.hidden = true; return; }
+    sendToMelt();
+  };
+  $("specYes").onclick = () => { confirmRow.hidden = true; sendToMelt(); };
+  $("specNo").onclick = () => { confirmRow.hidden = true; meltRow.hidden = false; };
+
+  let timer = null;
+  lamInput.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(update, 250); });
+  CDFIT_AFTER_REFRESH.push(update);
+  update();
+  return { labelOf, valueAt, meltTable: () => (view && view.trend ? meltTable(view) : "") };
+})();
+</script>
