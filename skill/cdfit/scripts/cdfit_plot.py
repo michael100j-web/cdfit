@@ -385,6 +385,8 @@ def best_legend(session, prefer=None):
                 y = float(y)
                 if math.isfinite(y) and ya.min <= y <= ya.max:
                     pts.append((X(x), Y(y)))
+    if g["F"].get("zeroLine") and not ya.log and ya.min < 0 < ya.max:      # the zero line strikes through text too
+        pts += [(g["ml"] + g["pw"] * i / 200, Y(0)) for i in range(201)]
     order = ([prefer] if prefer in LEGEND_CORNERS else []) + [c for c in LEGEND_CORNERS if c != prefer]
     margin = 4
     best, best_n = order[0], None
